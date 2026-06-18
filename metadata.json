@@ -1,0 +1,6 @@
+{
+  "name": "Subtitle Studio",
+  "description": "Extract & refine YT subtitles using Gemini AI, review line-by-line selected translations and edit timings with auto-playing media player.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
