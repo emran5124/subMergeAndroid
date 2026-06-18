@@ -6,6 +6,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -327,6 +329,13 @@ fun ReviewerScreen(
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 },
+                navigationIcon = {
+                    if (activeSubpId != null) {
+                        IconButton(onClick = { viewModel.selectActiveMainFolder(activePickerFolder!!) }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                },
                 actions = {
                     var trFileNameToExport by remember { mutableStateOf<String?>(null) }
                     
@@ -477,12 +486,14 @@ fun ReviewerScreen(
             } else {
                 // Tertiary State: Subproject opened! Render editor layout (Tablet Landscape vs Phone vertical flow split)
                 if (isExpanded) {
+                    val tabletScrollState = rememberScrollState()
                     Row(modifier = Modifier.fillMaxSize()) {
-                        // Left: Player and Controls (350.dp or weight 0.4)
+                        // Left: Player and Controls (350.dp or weight 0.4) - Scrollable to prevent low-height screen cuts
                         Column(
                             modifier = Modifier
                                 .weight(0.4f)
                                 .fillMaxHeight()
+                                .verticalScroll(tabletScrollState)
                                 .padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
@@ -496,6 +507,38 @@ fun ReviewerScreen(
                                 onPlaySegment = { viewModel.playCurrentLineSegment() },
                                 onToggleAutoPlay = { viewModel.setAutoPlay(it) }
                             )
+
+                            // Unified Prev/Next navigation on tablet
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = { viewModel.selectActiveLineIndex(activeLineIdx - 1) },
+                                        enabled = activeLineIdx > 0
+                                    ) {
+                                        Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Line")
+                                    }
+                                    
+                                    Text(
+                                        text = "Line ${activeLineIdx + 1} of ${combinedLines.size}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    
+                                    IconButton(
+                                        onClick = { viewModel.selectActiveLineIndex(activeLineIdx + 1) },
+                                        enabled = activeLineIdx < combinedLines.size - 1
+                                    ) {
+                                        Icon(Icons.Default.ChevronRight, contentDescription = "Next Line")
+                                    }
+                                }
+                            }
 
                             ActiveLineEditingPanel(
                                 combinedLines = combinedLines,
@@ -533,12 +576,15 @@ fun ReviewerScreen(
                         }
                     }
                 } else {
-                    // Mobile Split Vertical Flow
+                    // Mobile Split Vertical Flow - Scrollable Top Form & Fixed Bottom List
+                    val mobileScrollState = rememberScrollState()
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Top segment: Player and controls
+                        // Top segment: Player and controls - Scrollable with proportional weight
                         Column(
                             modifier = Modifier
+                                .weight(1.2f)
                                 .fillMaxWidth()
+                                .verticalScroll(mobileScrollState)
                                 .padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -563,28 +609,41 @@ fun ReviewerScreen(
                             )
                         }
 
-                        // Divider line index controls
+                        // Divider with line index navigation controls
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
+                                .background(MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp))
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            TextButton(onClick = { viewModel.selectActiveMainFolder(activePickerFolder!!) }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Projects", fontSize = 12.sp)
+                            FilledTonalIconButton(
+                                onClick = { viewModel.selectActiveLineIndex(activeLineIdx - 1) },
+                                enabled = activeLineIdx > 0,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Line")
                             }
+
                             Text(
                                 text = "Line ${activeLineIdx + 1} of ${combinedLines.size}",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp)
                             )
+
+                            FilledTonalIconButton(
+                                onClick = { viewModel.selectActiveLineIndex(activeLineIdx + 1) },
+                                enabled = activeLineIdx < combinedLines.size - 1,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.ChevronRight, contentDescription = "Next Line")
+                            }
                         }
 
                         // Bottom: List of subtitles
-                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        Box(modifier = Modifier.weight(0.8f).fillMaxWidth()) {
                             SubtitleLinesListView(
                                 lines = combinedLines,
                                 activeIdx = activeLineIdx,
@@ -748,39 +807,116 @@ fun ActiveLineEditingPanel(
                 maxLines = 2
             )
 
-            // Dropdown option panel for alternate translations
+            // Alternative translations list shows actual corresponding lines from other translation files
             Text(
-                text = "Alternative Translations:",
+                text = "Alternative Translations (Click to Select / Compare):",
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold
             )
 
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 line.alternatives.forEach { alt ->
-                    SuggestionChip(
-                        onClick = { onTranslationSelect(alt.fileName, alt.text) },
-                        label = { Text(text = alt.fileName, fontSize = 10.sp) },
-                        colors = if (line.selectedTranslationFileName == alt.fileName) {
-                            SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer, labelColor = MaterialTheme.colorScheme.onPrimaryContainer)
-                        } else {
-                            SuggestionChipDefaults.suggestionChipColors()
+                    val isSelected = line.selectedTranslationFileName == alt.fileName
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onTranslationSelect(alt.fileName, alt.text) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            }
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = alt.fileName,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = "Selected",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = alt.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                         }
-                    )
+                    }
                 }
 
-                // Custom editor choice chip
-                SuggestionChip(
-                    onClick = { onTranslationSelect("custom", line.selectedTranslationText ?: "") },
-                    label = { Text(text = "Custom Review", fontSize = 10.sp) },
-                    colors = if (line.selectedTranslationFileName == "custom" || line.selectedTranslationFileName == null) {
-                        SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, labelColor = MaterialTheme.colorScheme.onSecondaryContainer)
-                    } else {
-                        SuggestionChipDefaults.suggestionChipColors()
+                // Custom Edit and review selection card
+                val isCustomSelected = line.selectedTranslationFileName == "custom" || line.selectedTranslationFileName == null
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onTranslationSelect("custom", line.selectedTranslationText ?: "") },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isCustomSelected) {
+                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        }
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isCustomSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Custom Review / Free Edit Input",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                color = if (isCustomSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (isCustomSelected) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Editing",
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (!line.selectedTranslationText.isNullOrBlank() && isCustomSelected) {
+                                line.selectedTranslationText
+                            } else {
+                                "Tap to select Custom Review and type below..."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontStyle = if (line.selectedTranslationText.isNullOrBlank() && isCustomSelected) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
-                )
+                }
             }
 
             // Display current reviewer text

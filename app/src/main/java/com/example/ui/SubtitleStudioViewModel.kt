@@ -462,7 +462,7 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
                     _playerIsPlaying.value = false
                     break
                 }
-                delay(50)
+                delay(15)
             }
         }
     }
