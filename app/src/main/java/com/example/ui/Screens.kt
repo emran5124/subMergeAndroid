@@ -362,9 +362,11 @@ fun ReviewerScreen(
                             icon = { Icon(Icons.Filled.CheckCircle, contentDescription = "Success", tint = Color(0xFF34D399)) }
                         )
                     }
-                }
+                },
+                windowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp)
             )
         },
+        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
         modifier = modifier
     ) { padding ->
         BoxWithConstraints(
@@ -823,6 +825,17 @@ fun ActiveLineEditingPanel(
                 maxLines = 2
             )
 
+            // Display current reviewer text
+            OutlinedTextField(
+                value = line.selectedTranslationText ?: "",
+                onValueChange = { onTranslationEdit(it) },
+                label = { Text("Reviewed / Selected translation") },
+                placeholder = { Text("Click translate alternative below or type correct translations here...") },
+                modifier = Modifier.fillMaxWidth().testTag("trans_srt_input"),
+                textStyle = MaterialTheme.typography.bodyMedium,
+                maxLines = 3
+            )
+
             // Alternative translations list shows actual corresponding lines from other translation files
             Text(
                 text = "Alternative Translations (Click to Select / Compare):",
@@ -934,17 +947,6 @@ fun ActiveLineEditingPanel(
                     }
                 }
             }
-
-            // Display current reviewer text
-            OutlinedTextField(
-                value = line.selectedTranslationText ?: "",
-                onValueChange = { onTranslationEdit(it) },
-                label = { Text("Reviewed / Selected translation") },
-                placeholder = { Text("Click translate alternative above or type correct translations here...") },
-                modifier = Modifier.fillMaxWidth().testTag("trans_srt_input"),
-                textStyle = MaterialTheme.typography.bodyMedium,
-                maxLines = 3
-            )
         }
     }
 }
