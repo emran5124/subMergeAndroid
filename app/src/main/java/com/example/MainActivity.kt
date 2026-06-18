@@ -5,9 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.YoutubeSearchedFor
@@ -60,11 +58,11 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) { innerPadding ->
-                    val modifier = Modifier.padding(innerPadding)
+                    val bottomPaddingModifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
                     when (selectedTab) {
-                        0 -> YoutubeExtractorScreen(viewModel = viewModel, modifier = modifier)
-                        1 -> ReviewerScreen(viewModel = viewModel, modifier = modifier)
-                        2 -> SettingsScreen(viewModel = viewModel, modifier = modifier)
+                        0 -> YoutubeExtractorScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
+                        1 -> ReviewerScreen(viewModel = viewModel, modifier = bottomPaddingModifier)
+                        2 -> SettingsScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
                     }
                 }
             }

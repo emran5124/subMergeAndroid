@@ -362,8 +362,7 @@ fun ReviewerScreen(
                             icon = { Icon(Icons.Filled.CheckCircle, contentDescription = "Success", tint = Color(0xFF34D399)) }
                         )
                     }
-                },
-                windowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp)
+                }
             )
         },
         contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
@@ -815,16 +814,6 @@ fun ActiveLineEditingPanel(
                 }
             }
 
-            // Native subtitle Text
-            OutlinedTextField(
-                value = line.nativeText,
-                onValueChange = { onNativeEdit(it) },
-                label = { Text("Native Text (main.srt)") },
-                modifier = Modifier.fillMaxWidth().testTag("native_srt_input"),
-                textStyle = MaterialTheme.typography.bodyMedium,
-                maxLines = 2
-            )
-
             // Display current reviewer text
             OutlinedTextField(
                 value = line.selectedTranslationText ?: "",
@@ -834,6 +823,16 @@ fun ActiveLineEditingPanel(
                 modifier = Modifier.fillMaxWidth().testTag("trans_srt_input"),
                 textStyle = MaterialTheme.typography.bodyMedium,
                 maxLines = 3
+            )
+
+            // Native subtitle Text
+            OutlinedTextField(
+                value = line.nativeText,
+                onValueChange = { onNativeEdit(it) },
+                label = { Text("Native Text (main.srt)") },
+                modifier = Modifier.fillMaxWidth().testTag("native_srt_input"),
+                textStyle = MaterialTheme.typography.bodyMedium,
+                maxLines = 2
             )
 
             // Alternative translations list shows actual corresponding lines from other translation files
