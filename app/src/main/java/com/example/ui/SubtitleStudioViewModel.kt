@@ -86,6 +86,9 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
     private val _autoPlayOnNextLine = MutableStateFlow(true)
     val autoPlayOnNextLine: StateFlow<Boolean> = _autoPlayOnNextLine.asStateFlow()
 
+    private val _isSeeking = MutableStateFlow(false)
+    val isSeeking: StateFlow<Boolean> = _isSeeking.asStateFlow()
+
     init {
         viewModelScope.launch {
             // Load preferred Language
@@ -148,6 +151,14 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
             repository.saveSetting("last_folder_tree_uri", treeUri)
             scanTreeForSubdirs(treeUri)
         }
+    }
+
+    fun closeSelectedProject() {
+        _selectedProjectSubFolderId.value = null
+        _selectedProjectSubFolderName.value = null
+        _srtLines.value = emptyList()
+        _projectMetadata.value = null
+        stopMediaPlayer()
     }
 
     private fun scanTreeForSubdirs(treeUriStr: String) {
@@ -409,13 +420,25 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
         if (index < 0 || index >= lines.size) return
 
         val line = lines[index]
-        player.seekTo(line.startTimeMs.toInt())
-        if (!player.isPlaying) {
-            player.start()
+        _isSeeking.value = true
+        _playerIsPlaying.value = false
+        stopPlayerTracking()
+
+        player.setOnSeekCompleteListener {
+            _isSeeking.value = false
+            _playerCurrentPosMs.value = line.startTimeMs
+            if (!player.isPlaying) {
+                player.start()
+            }
             _playerIsPlaying.value = true
+            startPlayerTracking(stopTimeMs = line.endTimeMs, initialPosOverride = line.startTimeMs)
         }
 
-        startPlayerTracking(stopTimeMs = line.endTimeMs)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            player.seekTo(line.startTimeMs, MediaPlayer.SEEK_CLOSEST)
+        } else {
+            player.seekTo(line.startTimeMs.toInt())
+        }
     }
 
     private fun seekPlayerToLineIndex(index: Int) {
@@ -424,33 +447,53 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
         if (index < 0 || index >= lines.size) return
 
         val line = lines[index]
-        player.seekTo(line.startTimeMs.toInt())
+        _isSeeking.value = true
         _playerCurrentPosMs.value = line.startTimeMs
+        stopPlayerTracking()
 
-        // If auto play is active, let's start playing this line segment
-        if (_autoPlayOnNextLine.value) {
-            if (!player.isPlaying) {
-                player.start()
+        player.setOnSeekCompleteListener {
+            _isSeeking.value = false
+            _playerCurrentPosMs.value = line.startTimeMs
+            
+            // If auto play is active, let's start playing this line segment
+            if (_autoPlayOnNextLine.value) {
+                if (!player.isPlaying) {
+                    player.start()
+                }
                 _playerIsPlaying.value = true
-            }
-            startPlayerTracking(stopTimeMs = line.endTimeMs)
-        } else {
-            if (player.isPlaying) {
-                player.pause()
+                startPlayerTracking(stopTimeMs = line.endTimeMs, initialPosOverride = line.startTimeMs)
+            } else {
+                if (player.isPlaying) {
+                    player.pause()
+                }
                 _playerIsPlaying.value = false
-                stopPlayerTracking()
             }
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            player.seekTo(line.startTimeMs, MediaPlayer.SEEK_CLOSEST)
+        } else {
+            player.seekTo(line.startTimeMs.toInt())
         }
     }
 
-    private fun startPlayerTracking(stopTimeMs: Long? = null) {
+    private fun startPlayerTracking(stopTimeMs: Long? = null, initialPosOverride: Long? = null) {
         stopPlayerTracking()
         playerTrackingJob = viewModelScope.launch(Dispatchers.Main) {
+            val startTime = java.lang.System.currentTimeMillis()
+            val initialPlayerPos = initialPosOverride ?: mediaPlayer?.currentPosition?.toLong() ?: 0L
+            
             while (isActive) {
                 val player = mediaPlayer
-                if (player != null && player.isPlaying) {
-                    val pos = player.currentPosition.toLong()
-                    _playerCurrentPosMs.value = pos
+                if (player != null && player.isPlaying && !_isSeeking.value) {
+                    val elapsedRealtime = java.lang.System.currentTimeMillis() - startTime
+                    val estimatedPos = initialPlayerPos + elapsedRealtime
+                    
+                    val actualPos = player.currentPosition.toLong()
+                    _playerCurrentPosMs.value = actualPos
+                    
+                    // Predict highly precise stop using max of estimated or native position
+                    val pos = kotlin.math.max(estimatedPos, actualPos)
 
                     if (stopTimeMs != null && pos >= stopTimeMs) {
                         player.pause()
@@ -458,11 +501,13 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
                         _playerCurrentPosMs.value = stopTimeMs
                         break
                     }
+                } else if (player != null && _isSeeking.value) {
+                    // Do nothing, wait for seek to finish
                 } else {
                     _playerIsPlaying.value = false
                     break
                 }
-                delay(15)
+                delay(10)
             }
         }
     }

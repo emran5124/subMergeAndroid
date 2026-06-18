@@ -331,7 +331,7 @@ fun ReviewerScreen(
                 },
                 navigationIcon = {
                     if (activeSubpId != null) {
-                        IconButton(onClick = { viewModel.selectActiveMainFolder(activePickerFolder!!) }) {
+                        IconButton(onClick = { viewModel.closeSelectedProject() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     }
@@ -551,10 +551,10 @@ fun ReviewerScreen(
 
                             Spacer(modifier = Modifier.weight(1f))
                             
-                            OutlinedButton(
-                                onClick = { viewModel.selectActiveMainFolder(activePickerFolder!!) }, // Force re-scan / Back to subdir list
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
+                             OutlinedButton(
+                                 onClick = { viewModel.closeSelectedProject() }, // Force re-scan / Back to subdir list
+                                 modifier = Modifier.fillMaxWidth()
+                             ) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Back to Subproject List")
@@ -577,12 +577,13 @@ fun ReviewerScreen(
                     }
                 } else {
                     // Mobile Split Vertical Flow - Scrollable Top Form & Fixed Bottom List
+                    var listExpanded by remember { mutableStateOf(false) }
                     val mobileScrollState = rememberScrollState()
                     Column(modifier = Modifier.fillMaxSize()) {
                         // Top segment: Player and controls - Scrollable with proportional weight
                         Column(
                             modifier = Modifier
-                                .weight(1.2f)
+                                .weight(if (listExpanded) 1.2f else 1.0f)
                                 .fillMaxWidth()
                                 .verticalScroll(mobileScrollState)
                                 .padding(12.dp),
@@ -626,12 +627,25 @@ fun ReviewerScreen(
                                 Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Line")
                             }
 
-                            Text(
-                                text = "Line ${activeLineIdx + 1} of ${combinedLines.size}",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .clickable { listExpanded = !listExpanded }
+                                    .padding(vertical = 4.dp, horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Line ${activeLineIdx + 1} of ${combinedLines.size}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Icon(
+                                    imageVector = if (listExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Toggle List Visibility",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
 
                             FilledTonalIconButton(
                                 onClick = { viewModel.selectActiveLineIndex(activeLineIdx + 1) },
@@ -643,12 +657,14 @@ fun ReviewerScreen(
                         }
 
                         // Bottom: List of subtitles
-                        Box(modifier = Modifier.weight(0.8f).fillMaxWidth()) {
-                            SubtitleLinesListView(
-                                lines = combinedLines,
-                                activeIdx = activeLineIdx,
-                                onLineSelect = { viewModel.selectActiveLineIndex(it) }
-                            )
+                        if (listExpanded) {
+                            Box(modifier = Modifier.weight(0.8f).fillMaxWidth()) {
+                                SubtitleLinesListView(
+                                    lines = combinedLines,
+                                    activeIdx = activeLineIdx,
+                                    onLineSelect = { viewModel.selectActiveLineIndex(it) }
+                                )
+                            }
                         }
                     }
                 }
