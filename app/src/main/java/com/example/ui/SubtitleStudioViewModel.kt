@@ -158,6 +158,7 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
         _selectedProjectSubFolderName.value = null
         _srtLines.value = emptyList()
         _projectMetadata.value = null
+        _activeLineIndex.value = 0
         stopMediaPlayer()
     }
 
@@ -269,6 +270,7 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch {
             repository.saveSrtLineChange(
                 folderTreeUri = folderUri,
+                childDocId = subId,
                 lineIndex = line.index,
                 startTimeMs = newStart,
                 endTimeMs = newEnd,
@@ -282,6 +284,7 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
 
     fun editActiveLineNativeText(text: String) {
         val folderUri = _activeProjectFolderUri.value ?: return
+        val subId = _selectedProjectSubFolderId.value ?: return
         val index = _activeLineIndex.value
         val currentLines = _srtLines.value
         if (index < 0 || index >= currentLines.size) return
@@ -294,6 +297,7 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch {
             repository.saveSrtLineChange(
                 folderTreeUri = folderUri,
+                childDocId = subId,
                 lineIndex = line.index,
                 startTimeMs = line.startTimeMs,
                 endTimeMs = line.endTimeMs,
@@ -307,6 +311,7 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
 
     fun selectActiveLineTranslation(fileName: String, text: String) {
         val folderUri = _activeProjectFolderUri.value ?: return
+        val subId = _selectedProjectSubFolderId.value ?: return
         val index = _activeLineIndex.value
         val currentLines = _srtLines.value
         if (index < 0 || index >= currentLines.size) return
@@ -322,6 +327,7 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch {
             repository.saveSrtLineChange(
                 folderTreeUri = folderUri,
+                childDocId = subId,
                 lineIndex = line.index,
                 startTimeMs = line.startTimeMs,
                 endTimeMs = line.endTimeMs,
@@ -335,6 +341,7 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
 
     fun editActiveLineTranslationText(text: String) {
         val folderUri = _activeProjectFolderUri.value ?: return
+        val subId = _selectedProjectSubFolderId.value ?: return
         val index = _activeLineIndex.value
         val currentLines = _srtLines.value
         if (index < 0 || index >= currentLines.size) return
@@ -351,6 +358,7 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch {
             repository.saveSrtLineChange(
                 folderTreeUri = folderUri,
+                childDocId = subId,
                 lineIndex = line.index,
                 startTimeMs = line.startTimeMs,
                 endTimeMs = line.endTimeMs,

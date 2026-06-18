@@ -302,6 +302,12 @@ fun ReviewerScreen(
     val activeSubpId by viewModel.selectedProjectSubFolderId.collectAsState()
     val activeSubpName by viewModel.selectedProjectSubFolderName.collectAsState()
 
+    if (activeSubpId != null) {
+        androidx.activity.compose.BackHandler {
+            viewModel.closeSelectedProject()
+        }
+    }
+
     val combinedLines by viewModel.srtLines.collectAsState()
     val activeLineIdx by viewModel.activeLineIndex.collectAsState()
     val metadata by viewModel.projectMetadata.collectAsState()

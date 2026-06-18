@@ -121,6 +121,8 @@ class SubtitleRepository(private val context: Context, private val database: App
             return emptyList()
         }
 
+        val projectUniqueKey = "${folderTreeUri}_$childDocId"
+
         // 1. Parse main.srt
         val mainSrtContent = SafHelper.readTextFromUri(context, mainSrtUri)
         val mainSrtLines = SrtParser.parse(mainSrtContent)
@@ -135,7 +137,7 @@ class SubtitleRepository(private val context: Context, private val database: App
         }
 
         // 3. Load DB changes
-        val dbLinesMap = database.srtLineStateDao().getLineStatesForProject(folderTreeUri)
+        val dbLinesMap = database.srtLineStateDao().getLineStatesForProject(projectUniqueKey)
             .associateBy { it.lineIndex }
 
         // 4. Merge
@@ -176,11 +178,11 @@ class SubtitleRepository(private val context: Context, private val database: App
 
             // If there was no cached entry, let's pre-populate the DB for this line so everything is fully state-saved
             if (cached == null) {
-                val dbId = "${folderTreeUri}_${line.index}"
+                val dbId = "${projectUniqueKey}_${line.index}"
                 initialDbInserts.add(
                     SrtLineState(
                         id = dbId,
-                        folderUri = folderTreeUri,
+                        folderUri = projectUniqueKey,
                         lineIndex = line.index,
                         startTimeMs = line.startTimeMs,
                         endTimeMs = line.endTimeMs,
@@ -204,6 +206,7 @@ class SubtitleRepository(private val context: Context, private val database: App
      */
     suspend fun saveSrtLineChange(
         folderTreeUri: String,
+        childDocId: String,
         lineIndex: Int,
         startTimeMs: Long,
         endTimeMs: Long,
@@ -212,10 +215,11 @@ class SubtitleRepository(private val context: Context, private val database: App
         editedTranslationText: String?,
         mainSrtUri: Uri?
     ) {
-        val dbId = "${folderTreeUri}_${lineIndex}"
+        val projectUniqueKey = "${folderTreeUri}_$childDocId"
+        val dbId = "${projectUniqueKey}_${lineIndex}"
         val state = SrtLineState(
             id = dbId,
-            folderUri = folderTreeUri,
+            folderUri = projectUniqueKey,
             lineIndex = lineIndex,
             startTimeMs = startTimeMs,
             endTimeMs = endTimeMs,
