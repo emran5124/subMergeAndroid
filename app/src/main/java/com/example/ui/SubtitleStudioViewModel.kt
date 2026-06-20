@@ -1189,6 +1189,31 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             val cachedJson = repository.getSettingValue("tap_srt_lines_$uri", "")
             if (cachedJson.isNotEmpty()) {
                 _tapSrtLines.value = aiLinesFromJson(cachedJson)
+            } else {
+                // Pre-populate with either source TXT lines or 10 default lines
+                val txtLines = _tapSourceTxtLines.value
+                val list = mutableListOf<SrtParser.SrtLine>()
+                if (txtLines.isNotEmpty()) {
+                    for ((idx, text) in txtLines.withIndex()) {
+                        list.add(SrtParser.SrtLine(
+                            index = idx + 1,
+                            startTimeMs = 0L,
+                            endTimeMs = 0L,
+                            text = text
+                        ))
+                    }
+                } else {
+                    for (i in 1..10) {
+                        list.add(SrtParser.SrtLine(
+                            index = i,
+                            startTimeMs = 0L,
+                            endTimeMs = 0L,
+                            text = "$i"
+                        ))
+                    }
+                }
+                _tapSrtLines.value = list
+                saveCurrentTapSrtLines()
             }
             initializeTapMediaPlayer(uri)
         }
@@ -1338,56 +1363,68 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         val list = _tapSrtLines.value.toMutableList()
         val txtLines = _tapSourceTxtLines.value
 
+        // Ensure we have at least one line
+        if (list.isEmpty()) {
+            val preText = txtLines.getOrNull(0) ?: "1"
+            list.add(SrtParser.SrtLine(index = 1, startTimeMs = 0, endTimeMs = 0, text = preText))
+        }
+
         if (!_tapIsRecording.value) {
-            // First click: mark start of the first SRT block
-            val nextIdx = list.size + 1
-            val preText = txtLines.getOrNull(nextIdx - 1) ?: "Line $nextIdx"
+            // First click: mark start of the active SRT block (default to first line or whatever is currently active)
+            var activeIdx = _tapActiveLineIndex.value
+            if (activeIdx < 0 || activeIdx >= list.size) {
+                activeIdx = 0
+            }
             
-            val newBlock = SrtParser.SrtLine(
-                index = nextIdx,
-                startTimeMs = currentPlayMs,
-                endTimeMs = currentPlayMs + 1000L, // placeholder end (will be updated on next tap)
-                text = preText
-            )
-            list.add(newBlock)
+            val currentLine = list[activeIdx]
+            list[activeIdx] = currentLine.copy(startTimeMs = currentPlayMs, endTimeMs = currentPlayMs + 1000L)
             _tapSrtLines.value = list
             _tapIsRecording.value = true
             _tapCurrentRecordingStartMs.value = currentPlayMs
-            _tapActiveLineIndex.value = list.lastIndex
+            _tapActiveLineIndex.value = activeIdx
 
             viewModelScope.launch {
                 repository.saveSetting("tap_is_recording", "true")
                 repository.saveSetting("tap_current_rec_start_ms", currentPlayMs.toString())
-                saveCurrentTapActiveLineIndex(list.lastIndex)
+                saveCurrentTapActiveLineIndex(activeIdx)
                 saveCurrentTapSrtLines()
             }
         } else {
             // Next click: end current block, start next block
-            if (list.isNotEmpty()) {
-                val lastIdx = list.lastIndex
-                val lastBlock = list[lastIdx]
-                list[lastIdx] = lastBlock.copy(endTimeMs = currentPlayMs)
+            val activeIdx = _tapActiveLineIndex.value
+            if (activeIdx >= 0 && activeIdx < list.size) {
+                val currentLine = list[activeIdx]
+                list[activeIdx] = currentLine.copy(endTimeMs = currentPlayMs)
             }
 
-            // Start the next block immediately
-            val nextIdx = list.size + 1
-            val preText = txtLines.getOrNull(nextIdx - 1) ?: "Line $nextIdx"
-            
-            val newBlock = SrtParser.SrtLine(
-                index = nextIdx,
-                startTimeMs = currentPlayMs,
-                endTimeMs = currentPlayMs + 1000L, // placeholder
-                text = preText
-            )
-            list.add(newBlock)
-            _tapSrtLines.value = list
-            _tapCurrentRecordingStartMs.value = currentPlayMs
-            _tapActiveLineIndex.value = list.lastIndex
+            // Start next block
+            val nextIdx = activeIdx + 1
+            if (nextIdx < list.size) {
+                // Next line already exists! Set its startTimeMs
+                val nextLine = list[nextIdx]
+                list[nextIdx] = nextLine.copy(startTimeMs = currentPlayMs, endTimeMs = currentPlayMs + 1000L)
+                _tapActiveLineIndex.value = nextIdx
+                _tapCurrentRecordingStartMs.value = currentPlayMs
+            } else {
+                // Next line does not exist. Create and append a new line!
+                val lineNum = list.size + 1
+                val preText = txtLines.getOrNull(lineNum - 1) ?: "$lineNum"
+                val newBlock = SrtParser.SrtLine(
+                    index = lineNum,
+                    startTimeMs = currentPlayMs,
+                    endTimeMs = currentPlayMs + 1000L,
+                    text = preText
+                )
+                list.add(newBlock)
+                _tapActiveLineIndex.value = list.lastIndex
+                _tapCurrentRecordingStartMs.value = currentPlayMs
+            }
 
+            _tapSrtLines.value = list
             viewModelScope.launch {
                 repository.saveSetting("tap_is_recording", "true")
                 repository.saveSetting("tap_current_rec_start_ms", currentPlayMs.toString())
-                saveCurrentTapActiveLineIndex(list.lastIndex)
+                saveCurrentTapActiveLineIndex(_tapActiveLineIndex.value)
                 saveCurrentTapSrtLines()
             }
         }
@@ -1507,11 +1544,9 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         player.setOnSeekCompleteListener {
             _tapIsSeeking.value = false
             _tapPlayerCurrentPosMs.value = line.startTimeMs
-            if (player.isPlaying) {
-                startTapPlayerTracking()
-            } else {
-                _tapPlayerIsPlaying.value = false
-            }
+            player.start()
+            _tapPlayerIsPlaying.value = true
+            startTapPlayerTracking()
         }
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -1536,20 +1571,37 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                 withContext(Dispatchers.Main) {
                     _tapSourceTxtLines.value = lines
                     
-                    // If we already have SRT lines, let's update their texts to match incoming source txt line-by-line where possible, as requested!
                     val srtList = _tapSrtLines.value.toMutableList()
-                    var changed = false
-                    for (i in 0 until srtList.size) {
-                        val txt = lines.getOrNull(i)
-                        if (txt != null && srtList[i].text != txt) {
-                            srtList[i] = srtList[i].copy(text = txt)
-                            changed = true
+                    val isPlaceholderOnly = srtList.isEmpty() || srtList.all { it.text == it.index.toString() || (it.startTimeMs == 0L && it.endTimeMs == 0L) }
+                    
+                    if (isPlaceholderOnly) {
+                        srtList.clear()
+                        for ((idx, txt) in lines.withIndex()) {
+                            srtList.add(SrtParser.SrtLine(
+                                index = idx + 1,
+                                startTimeMs = 0L,
+                                endTimeMs = 0L,
+                                text = txt
+                            ))
+                        }
+                    } else {
+                        // Merge text onto existing list
+                        for (i in 0 until maxOf(srtList.size, lines.size)) {
+                            val txt = lines.getOrNull(i) ?: "${i + 1}"
+                            if (i < srtList.size) {
+                                srtList[i] = srtList[i].copy(text = txt)
+                            } else {
+                                srtList.add(SrtParser.SrtLine(
+                                    index = i + 1,
+                                    startTimeMs = 0L,
+                                    endTimeMs = 0L,
+                                    text = txt
+                                ))
+                            }
                         }
                     }
-                    if (changed) {
-                        _tapSrtLines.value = srtList
-                        saveCurrentTapSrtLines()
-                    }
+                    _tapSrtLines.value = srtList
+                    saveCurrentTapSrtLines()
 
                     viewModelScope.launch {
                         repository.saveSetting("tap_txt_file_uri", uri.toString())
@@ -1572,6 +1624,30 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             repository.saveSetting("tap_txt_file_name", "")
             repository.saveSetting("tap_source_txt", "")
         }
+    }
+
+    fun addNewTapLinePlaceholder() {
+        val list = _tapSrtLines.value.toMutableList()
+        val nextIdx = list.size + 1
+        val txtLines = _tapSourceTxtLines.value
+        val preText = txtLines.getOrNull(nextIdx - 1) ?: "$nextIdx"
+        
+        val lastEndTime = list.lastOrNull()?.endTimeMs ?: 0L
+        
+        list.add(SrtParser.SrtLine(
+            index = nextIdx,
+            startTimeMs = lastEndTime,
+            endTimeMs = lastEndTime + 1000L,
+            text = preText
+        ))
+        _tapSrtLines.value = list
+        saveCurrentTapSrtLines()
+    }
+
+    fun writeTapSrtToUri(context: android.content.Context, uri: Uri): Boolean {
+        val srtContent = SrtParser.buildSrt(_tapSrtLines.value)
+        val success = SafHelper.writeTextToUri(context, uri, srtContent)
+        return success
     }
 
     fun exportTapSrtToDownloads(): String? {

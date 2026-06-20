@@ -1351,6 +1351,19 @@ fun AiSubtitleScreen(
         }
     }
 
+    val saveSrtLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val success = viewModel.writeTapSrtToUri(context, uri)
+            if (success) {
+                android.widget.Toast.makeText(context, "Saved successfully!", android.widget.Toast.LENGTH_LONG).show()
+            } else {
+                android.widget.Toast.makeText(context, "Save failed. Please try again.", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -2021,9 +2034,27 @@ fun AiSubtitleScreen(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
                     ) {
                         Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
+                            // Current position displayed prominently on top
+                            Text(
+                                text = SrtParser.formatTime(tapPlayerPosMs),
+                                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            // Media slider
+                            Slider(
+                                value = if (tapPlayerDurationMs > 0) tapPlayerPosMs.toFloat() / tapPlayerDurationMs.toFloat() else 0f,
+                                onValueChange = {
+                                    val target = (it * tapPlayerDurationMs.toFloat()).toLong()
+                                    viewModel.seekTapPlayerToMs(target)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2052,21 +2083,12 @@ fun AiSubtitleScreen(
                                 }
 
                                 Text(
-                                    text = "${SrtParser.formatTime(tapPlayerPosMs)} / ${SrtParser.formatTime(tapPlayerDurationMs)}",
+                                    text = "Total: ${SrtParser.formatTime(tapPlayerDurationMs)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontFamily = FontFamily.Monospace,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-
-                            Slider(
-                                value = if (tapPlayerDurationMs > 0) tapPlayerPosMs.toFloat() / tapPlayerDurationMs.toFloat() else 0f,
-                                onValueChange = {
-                                    val target = (it * tapPlayerDurationMs.toFloat()).toLong()
-                                    viewModel.seekTapPlayerToMs(target)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
                         }
                     }
 
@@ -2153,29 +2175,42 @@ fun AiSubtitleScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Generated Timelines (${tapSrtLines.size} entries)",
+                            text = "Timelines (${tapSrtLines.size} entries)",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        if (tapSrtLines.isNotEmpty()) {
-                            Button(
-                                onClick = {
-                                    val exportedFile = viewModel.exportTapSrtToDownloads()
-                                    if (exportedFile != null) {
-                                        android.widget.Toast.makeText(context, "Exported successfully to Downloads/yt-subs/$exportedFile", android.widget.Toast.LENGTH_LONG).show()
-                                    } else {
-                                        android.widget.Toast.makeText(context, "Export failed. Please check files.", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                },
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.addNewTapLinePlaceholder() },
                                 modifier = Modifier.height(32.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                 contentPadding = PaddingValues(horizontal = 8.dp)
                             ) {
-                                Icon(Icons.Filled.Save, contentDescription = "Save and export", modifier = Modifier.size(14.dp))
+                                Icon(Icons.Filled.Add, contentDescription = "Add Line", modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Export SRT", fontSize = 12.sp)
+                                Text("Add Line", fontSize = 11.sp)
+                            }
+
+                            if (tapSrtLines.isNotEmpty()) {
+                                Button(
+                                    onClick = {
+                                        val rawName = tapAudioName ?: "subtitles"
+                                        val cleanName = rawName.substringBeforeLast(".").replace(" ", "_")
+                                        val defaultFileName = "${cleanName}_subbed.srt"
+                                        saveSrtLauncher.launch(defaultFileName)
+                                    },
+                                    modifier = Modifier.height(32.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    contentPadding = PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    Icon(Icons.Filled.Save, contentDescription = "Save and export", modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Export SRT", fontSize = 11.sp)
+                                }
                             }
                         }
                     }
