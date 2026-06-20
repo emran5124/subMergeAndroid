@@ -16,9 +16,9 @@ import java.util.concurrent.TimeUnit
 object GeminiApiClient {
     private const val TAG = "GeminiApiClient"
     private val client = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.MINUTES)
+        .writeTimeout(10, TimeUnit.MINUTES)
+        .readTimeout(10, TimeUnit.MINUTES)
         .build()
 
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
@@ -222,6 +222,159 @@ object GeminiApiClient {
                     }
                 }
                 Result.failure(GeminiException(code, "Empty content or unrecognized JSON response schema."))
+            } else {
+                var message = "HTTP error $code"
+                try {
+                    val errJson = JSONObject(bodyStr)
+                    val errObj = errJson.optJSONObject("error")
+                    if (errObj != null) {
+                        message = errObj.optString("message", message)
+                    }
+                } catch (e: Exception) {
+                    // ignore
+                }
+                Result.failure(GeminiException(code, message))
+            }
+        } catch (e: IOException) {
+            Result.failure(GeminiException(503, e.message ?: "Network call failed due to IO exception."))
+        } catch (e: Exception) {
+            Result.failure(GeminiException(500, e.message ?: "Unknown local exception during call."))
+        }
+    }
+
+    suspend fun transcribeAudio(
+        audioBytes: ByteArray,
+        mimeType: String,
+        customPrompt: String,
+        apiConfigs: List<ApiKeyConfig>,
+        listener: StatusListener
+    ): String? {
+        if (apiConfigs.isEmpty()) {
+            listener.onStateChanged(CallStepState.OutOfOptions("No Gemini API keys are configured. Please add one in Settings."))
+            return null
+        }
+
+        val ttsModels = listOf("gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts")
+
+        var configIndex = 0
+        while (configIndex < apiConfigs.size) {
+            val config = apiConfigs[configIndex]
+            val keyDesc = if (config.description.isNotBlank()) config.description else "Key #${config.id}"
+
+            for (modelName in ttsModels) {
+                Log.d(TAG, "Trying API Key: $keyDesc with model $modelName")
+                listener.onStateChanged(CallStepState.Sending(keyDesc, modelName))
+
+                var attempt = 1
+                var shouldRetryModel = true
+
+                while (shouldRetryModel) {
+                    val result = makeSingleAudioApiCall(config.apiKey, modelName, customPrompt, audioBytes, mimeType)
+
+                    if (result.isSuccess) {
+                        val text = result.getOrNull()
+                        if (!text.isNullOrBlank()) {
+                            listener.onStateChanged(CallStepState.Success(text))
+                            return text
+                        } else {
+                            Log.w(TAG, "Success but text is empty.")
+                            shouldRetryModel = false
+                        }
+                    } else {
+                        val exception = result.exceptionOrNull()
+                        val code = (exception as? GeminiException)?.code ?: -1
+                        val errMsg = exception?.message ?: "Unknown error"
+
+                        Log.e(TAG, "API Call Failed for $modelName: Code = $code, Msg = $errMsg")
+
+                        when (code) {
+                            429 -> {
+                                Log.d(TAG, "Rate limit (429) on model $modelName. Trying next option.")
+                                shouldRetryModel = false 
+                            }
+                            400, 403 -> {
+                                Log.d(TAG, "Geo-block/Auth error $code. Prompting VPN.")
+                                val vpnDeferred = CompletableDeferred<Unit>()
+                                listener.onStateChanged(CallStepState.VpnBlockPrompt {
+                                    vpnDeferred.complete(Unit)
+                                })
+                                vpnDeferred.await()
+                            }
+                            else -> {
+                                if (attempt <= 3) {
+                                    Log.d(TAG, "Transient network error $code, retrying #$attempt in 10s...")
+                                    for (sec in 10 downTo 1) {
+                                        listener.onStateChanged(CallStepState.RetryingRateLimit(attempt, sec, "$keyDesc (Net Error)"))
+                                        delay(1000)
+                                    }
+                                    attempt++
+                                } else {
+                                    shouldRetryModel = false 
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            configIndex++
+        }
+
+        listener.onStateChanged(CallStepState.OutOfOptions("All configured API Keys and fallback TTS models failed."))
+        return null
+    }
+
+    private fun makeSingleAudioApiCall(
+        apiKey: String,
+        model: String,
+        prompt: String,
+        audioBytes: ByteArray,
+        mimeType: String
+    ): Result<String> {
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+
+        val requestJson = JSONObject().apply {
+            put("contents", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("text", prompt)
+                        })
+                        put(JSONObject().apply {
+                            put("inlineData", JSONObject().apply {
+                                put("mimeType", mimeType)
+                                put("data", android.util.Base64.encodeToString(audioBytes, android.util.Base64.NO_WRAP))
+                            })
+                        })
+                    })
+                })
+            })
+        }
+
+        val request = Request.Builder()
+            .url(url)
+            .post(requestJson.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        return try {
+            val response = client.newCall(request).execute()
+            val code = response.code
+            val bodyStr = response.body?.string() ?: ""
+
+            if (response.isSuccessful) {
+                val json = JSONObject(bodyStr)
+                val candidates = json.optJSONArray("candidates")
+                if (candidates != null && candidates.length() > 0) {
+                    val firstCandidate = candidates.getJSONObject(0)
+                    val contentObj = firstCandidate.optJSONObject("content")
+                    if (contentObj != null) {
+                        val parts = contentObj.optJSONArray("parts")
+                        if (parts != null && parts.length() > 0) {
+                            val textValue = parts.getJSONObject(0).optString("text")
+                            return Result.success(textValue)
+                        }
+                    }
+                }
+                Result.failure(GeminiException(code, "Empty content or unrecognized JSON schema."))
             } else {
                 var message = "HTTP error $code"
                 try {

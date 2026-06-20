@@ -89,6 +89,77 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
     private val _isSeeking = MutableStateFlow(false)
     val isSeeking: StateFlow<Boolean> = _isSeeking.asStateFlow()
 
+    // --- AI Audio Studio States ---
+    private val defaultAiPromptMain = """
+You are an expert subtitle transcriber. Listen to the provided audio file carefully, and transcribe it into a standard SRT subtitle format.
+
+FORMAT RULES:
+1. Each subtitle block must follow the standard SRT format:
+[Index]
+[HH:MM:SS,mmm] --> [HH:MM:SS,mmm]
+[Text]
+
+Example:
+1
+00:00:01,250 --> 00:00:04,800
+Hello and welcome.
+
+2. Ensure the timing is in the EXACT format 'HH:MM:SS,mmm' or 'HH:MM:SS.mmm' where mmm is milliseconds (e.g. 01:24:10,542). Note the dot or comma before the milliseconds.
+
+ALIGNMENT RULES:
+If a SOURCE TEXT is provided below, you MUST align the transcription lines EXACTLY with the SOURCE TEXT lines. 
+- Each line in the SOURCE TEXT corresponds to exactly one SRT block. 
+- Do NOT break a single source line across multiple SRT blocks.
+- Do NOT combine multiple source lines into a single SRT block.
+- Keep the words of each source line completely intact in its block. Do NOT split a word across lines (e.g., do NOT turn "text1" into "te" on one line and "xt1" on the next).
+- The audio might contain extra sounds, background noise, or other spoken words before, in between, or after. You can add extra subtitle blocks for these, but the lines that correspond to the SOURCE TEXT must remain intact and aligned as individual complete lines.
+
+SOURCE TEXT:
+[sourceTextPlaceholder]
+
+Please output ONLY the standard SRT content. Do NOT include any explanations, introduction, markdown blocks (like ```) or comments. Start directly with the first subtitle block.
+""".trimIndent()
+
+    private val _aiAudioFileUri = MutableStateFlow<Uri?>(null)
+    val aiAudioFileUri: StateFlow<Uri?> = _aiAudioFileUri.asStateFlow()
+
+    private val _aiAudioFileName = MutableStateFlow<String?>(null)
+    val aiAudioFileName: StateFlow<String?> = _aiAudioFileName.asStateFlow()
+
+    private val _aiAudioMimeType = MutableStateFlow<String?>(null)
+    val aiAudioMimeType: StateFlow<String?> = _aiAudioMimeType.asStateFlow()
+
+    private val _aiCustomPrompt = MutableStateFlow("")
+    val aiCustomPrompt: StateFlow<String> = _aiCustomPrompt.asStateFlow()
+
+    private val _aiSourceText = MutableStateFlow("")
+    val aiSourceText: StateFlow<String> = _aiSourceText.asStateFlow()
+
+    private val _aiTranscriptionState = MutableStateFlow<GeminiApiClient.CallStepState>(GeminiApiClient.CallStepState.Idle)
+    val aiTranscriptionState: StateFlow<GeminiApiClient.CallStepState> = _aiTranscriptionState.asStateFlow()
+
+    private val _aiSrtLines = MutableStateFlow<List<SrtParser.SrtLine>>(emptyList())
+    val aiSrtLines: StateFlow<List<SrtParser.SrtLine>> = _aiSrtLines.asStateFlow()
+
+    private val _aiActiveLineIndex = MutableStateFlow(0)
+    val aiActiveLineIndex: StateFlow<Int> = _aiActiveLineIndex.asStateFlow()
+
+    // AI Player state
+    private var aiMediaPlayer: MediaPlayer? = null
+    private var aiPlayerTrackingJob: Job? = null
+
+    private val _aiPlayerIsPlaying = MutableStateFlow(false)
+    val aiPlayerIsPlaying: StateFlow<Boolean> = _aiPlayerIsPlaying.asStateFlow()
+
+    private val _aiPlayerCurrentPosMs = MutableStateFlow(0L)
+    val aiPlayerCurrentPosMs: StateFlow<Long> = _aiPlayerCurrentPosMs.asStateFlow()
+
+    private val _aiPlayerDuration = MutableStateFlow(0L)
+    val aiPlayerDuration: StateFlow<Long> = _aiPlayerDuration.asStateFlow()
+
+    private val _aiIsSeeking = MutableStateFlow(false)
+    val aiIsSeeking: StateFlow<Boolean> = _aiIsSeeking.asStateFlow()
+
     init {
         viewModelScope.launch {
             // Load preferred Language
@@ -101,7 +172,381 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
                 _activeProjectFolderUri.value = lastFolder
                 scanTreeForSubdirs(lastFolder)
             }
+
+            // Load AI Transcriber Settings
+            val cachedPrompt = repository.getSettingValue("ai_custom_prompt", "")
+            _aiCustomPrompt.value = if (cachedPrompt.isEmpty()) defaultAiPromptMain else cachedPrompt
+
+            _aiSourceText.value = repository.getSettingValue("ai_source_text", "")
+
+            val cachedAudioUriStr = repository.getSettingValue("ai_selected_audio_uri", "")
+            if (cachedAudioUriStr.isNotEmpty()) {
+                try {
+                    val uri = Uri.parse(cachedAudioUriStr)
+                    _aiAudioFileUri.value = uri
+                    _aiAudioFileName.value = repository.getSettingValue("ai_selected_audio_name", "Selected Audio")
+                    val mime = repository.getSettingValue("ai_selected_audio_mime", "audio/*")
+                    _aiAudioMimeType.value = mime
+
+                    // Load SRT lines for this specific audio
+                    val linesJson = repository.getSettingValue("ai_srt_lines_$cachedAudioUriStr", "")
+                    if (linesJson.isNotEmpty()) {
+                        _aiSrtLines.value = aiLinesFromJson(linesJson)
+                    }
+                    initializeAiMediaPlayer(uri)
+                } catch (e: Exception) {
+                    Log.e("SubtitleStudioViewModel", "Error loading cached AI audio settings", e)
+                }
+            }
         }
+    }
+
+    private fun aiLinesToJson(lines: List<SrtParser.SrtLine>): String {
+        val array = org.json.JSONArray()
+        for (line in lines) {
+            val obj = org.json.JSONObject()
+            obj.put("index", line.index)
+            obj.put("startTimeMs", line.startTimeMs)
+            obj.put("endTimeMs", line.endTimeMs)
+            obj.put("text", line.text)
+            array.put(obj)
+        }
+        return array.toString()
+    }
+
+    private fun aiLinesFromJson(jsonStr: String): List<SrtParser.SrtLine> {
+        val list = mutableListOf<SrtParser.SrtLine>()
+        try {
+            val array = org.json.JSONArray(jsonStr)
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    SrtParser.SrtLine(
+                        index = obj.getInt("index"),
+                        startTimeMs = obj.getLong("startTimeMs"),
+                        endTimeMs = obj.getLong("endTimeMs"),
+                        text = obj.getString("text")
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("SubtitleStudioViewModel", "Failed to parse AI srt lines Json", e)
+        }
+        return list
+    }
+
+    fun setAiCustomPrompt(prompt: String) {
+        _aiCustomPrompt.value = prompt
+        viewModelScope.launch {
+            repository.saveSetting("ai_custom_prompt", prompt)
+        }
+    }
+
+    fun setAiSourceText(text: String) {
+        _aiSourceText.value = text
+        viewModelScope.launch {
+            repository.saveSetting("ai_source_text", text)
+        }
+    }
+
+    fun setAiSelectedAudio(uri: Uri, name: String, mimeType: String) {
+        _aiAudioFileUri.value = uri
+        _aiAudioFileName.value = name
+        _aiAudioMimeType.value = mimeType
+        _aiActiveLineIndex.value = 0
+        _aiSrtLines.value = emptyList()
+
+        viewModelScope.launch {
+            repository.saveSetting("ai_selected_audio_uri", uri.toString())
+            repository.saveSetting("ai_selected_audio_name", name)
+            repository.saveSetting("ai_selected_audio_mime", mimeType)
+
+            // Try loading cached subtitles for this specific URI
+            val cachedJson = repository.getSettingValue("ai_srt_lines_$uri", "")
+            if (cachedJson.isNotEmpty()) {
+                _aiSrtLines.value = aiLinesFromJson(cachedJson)
+            }
+            initializeAiMediaPlayer(uri)
+        }
+    }
+
+    fun clearAiSelectedAudio() {
+        stopCleanAiMediaPlayer()
+        _aiAudioFileUri.value = null
+        _aiAudioFileName.value = null
+        _aiAudioMimeType.value = null
+        _aiSrtLines.value = emptyList()
+        _aiActiveLineIndex.value = 0
+        viewModelScope.launch {
+            repository.saveSetting("ai_selected_audio_uri", "")
+            repository.saveSetting("ai_selected_audio_name", "")
+            repository.saveSetting("ai_selected_audio_mime", "")
+        }
+    }
+
+    fun startAiTranscription() {
+        val uri = _aiAudioFileUri.value ?: return
+        val mime = _aiAudioMimeType.value ?: "audio/mp3"
+        val rawPrompt = _aiCustomPrompt.value
+        val sourceText = _aiSourceText.value
+
+        val customPrompt = if (sourceText.isNotBlank()) {
+            rawPrompt.replace("[sourceTextPlaceholder]", sourceText)
+        } else {
+            rawPrompt.replace("If a SOURCE TEXT is provided below, you MUST align the transcription lines EXACTLY with the SOURCE TEXT lines. \n- Each line in the SOURCE TEXT corresponds to exactly one SRT block. \n- Do NOT break a single source line across multiple SRT blocks. \n- Do NOT combine multiple source lines into a single SRT block. \n- Keep the words of each source line completely intact in its block. Do NOT split a word across lines (e.g., do NOT turn \"text1\" into \"te\" on one line and \"xt1\" on the next). \n- The audio might contain extra sounds, background noise, or other spoken words before, in between, or after. You can add extra subtitle blocks for these, but the lines that correspond to the SOURCE TEXT must remain intact and aligned as individual complete lines.\n\nSOURCE TEXT:\n[sourceTextPlaceholder]", "")
+        }
+
+        _aiTranscriptionState.value = GeminiApiClient.CallStepState.Sending("Preparing audio file...", "Initializing")
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bytes = inputStream?.use { it.readBytes() }
+                if (bytes == null || bytes.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        _aiTranscriptionState.value = GeminiApiClient.CallStepState.OutOfOptions("Unable to read the audio file data.")
+                    }
+                    return@launch
+                }
+
+                val apiConfigs = repository.apiKeyConfigsFlow.firstOrNull() ?: emptyList()
+                val listener = object : GeminiApiClient.StatusListener {
+                    override fun onStateChanged(state: GeminiApiClient.CallStepState) {
+                        viewModelScope.launch(Dispatchers.Main) {
+                            _aiTranscriptionState.value = state
+                        }
+                    }
+                }
+
+                val resultText = GeminiApiClient.transcribeAudio(
+                    audioBytes = bytes,
+                    mimeType = mime,
+                    customPrompt = customPrompt,
+                    apiConfigs = apiConfigs,
+                    listener = listener
+                )
+
+                if (resultText != null) {
+                    val parsedLines = SrtParser.parse(resultText)
+                    withContext(Dispatchers.Main) {
+                        if (parsedLines.isNotEmpty()) {
+                            _aiSrtLines.value = parsedLines
+                            _aiActiveLineIndex.value = 0
+                            _aiTranscriptionState.value = GeminiApiClient.CallStepState.Success("Successfully parsed ${parsedLines.size} lines.")
+                            saveCurrentAiSrtLines()
+                        } else {
+                            _aiTranscriptionState.value = GeminiApiClient.CallStepState.OutOfOptions("Gemini generated text, but we couldn't parse it into SRT blocks. Output:\n\n$resultText")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _aiTranscriptionState.value = GeminiApiClient.CallStepState.OutOfOptions("Exception occurred: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun saveCurrentAiSrtLines() {
+        val uriStr = _aiAudioFileUri.value?.toString() ?: return
+        val current = _aiSrtLines.value
+        viewModelScope.launch {
+            repository.saveSetting("ai_srt_lines_$uriStr", aiLinesToJson(current))
+        }
+    }
+
+    fun setAiActiveLineIndex(index: Int) {
+        val currentLines = _aiSrtLines.value
+        if (index >= 0 && index < currentLines.size) {
+            _aiActiveLineIndex.value = index
+            seekAiPlayerToLineIndex(index)
+        }
+    }
+
+    fun updateAiLineText(index: Int, newText: String) {
+        val current = _aiSrtLines.value.toMutableList()
+        if (index >= 0 && index < current.size) {
+            val oldLine = current[index]
+            current[index] = oldLine.copy(text = newText)
+            _aiSrtLines.value = current
+            saveCurrentAiSrtLines()
+        }
+    }
+
+    fun updateAiLineTiming(index: Int, startMs: Long, endMs: Long) {
+        val current = _aiSrtLines.value.toMutableList()
+        if (index >= 0 && index < current.size) {
+            val oldLine = current[index]
+            current[index] = oldLine.copy(startTimeMs = startMs, endTimeMs = endMs)
+            _aiSrtLines.value = current
+            saveCurrentAiSrtLines()
+        }
+    }
+
+    private fun initializeAiMediaPlayer(uri: Uri) {
+        stopCleanAiMediaPlayer()
+        try {
+            aiMediaPlayer = MediaPlayer().apply {
+                setDataSource(context, uri)
+                prepare()
+                _aiPlayerDuration.value = duration.toLong()
+            }
+            _aiPlayerIsPlaying.value = false
+            _aiPlayerCurrentPosMs.value = 0L
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize AI Media Player for URI $uri", e)
+        }
+    }
+
+    fun toggleAiPlayback() {
+        val player = aiMediaPlayer ?: return
+        if (player.isPlaying) {
+            player.pause()
+            _aiPlayerIsPlaying.value = false
+            stopAiPlayerTracking()
+        } else {
+            player.start()
+            _aiPlayerIsPlaying.value = true
+            startAiPlayerTracking()
+        }
+    }
+
+    fun playAiCurrentLineSegment() {
+        val player = aiMediaPlayer ?: return
+        val index = _aiActiveLineIndex.value
+        val lines = _aiSrtLines.value
+        if (index < 0 || index >= lines.size) return
+
+        val line = lines[index]
+        _aiIsSeeking.value = true
+        _aiPlayerIsPlaying.value = false
+        stopAiPlayerTracking()
+
+        player.setOnSeekCompleteListener {
+            _aiIsSeeking.value = false
+            _aiPlayerCurrentPosMs.value = line.startTimeMs
+            if (!player.isPlaying) {
+                player.start()
+            }
+            _aiPlayerIsPlaying.value = true
+            startAiPlayerTracking(stopTimeMs = line.endTimeMs, initialPosOverride = line.startTimeMs)
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            player.seekTo(line.startTimeMs, MediaPlayer.SEEK_CLOSEST)
+        } else {
+            player.seekTo(line.startTimeMs.toInt())
+        }
+    }
+
+    private fun seekAiPlayerToLineIndex(index: Int) {
+        val player = aiMediaPlayer ?: return
+        val lines = _aiSrtLines.value
+        if (index < 0 || index >= lines.size) return
+
+        val line = lines[index]
+        _aiIsSeeking.value = true
+        _aiPlayerCurrentPosMs.value = line.startTimeMs
+        stopAiPlayerTracking()
+
+        player.setOnSeekCompleteListener {
+            _aiIsSeeking.value = false
+            _aiPlayerCurrentPosMs.value = line.startTimeMs
+            if (player.isPlaying) {
+                startAiPlayerTracking(stopTimeMs = line.endTimeMs, initialPosOverride = line.startTimeMs)
+            } else {
+                _aiPlayerIsPlaying.value = false
+            }
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            player.seekTo(line.startTimeMs, MediaPlayer.SEEK_CLOSEST)
+        } else {
+            player.seekTo(line.startTimeMs.toInt())
+        }
+    }
+
+    private fun startAiPlayerTracking(stopTimeMs: Long? = null, initialPosOverride: Long? = null) {
+        stopAiPlayerTracking()
+        aiPlayerTrackingJob = viewModelScope.launch(Dispatchers.Main) {
+            val startTime = java.lang.System.currentTimeMillis()
+            val initialPlayerPos = initialPosOverride ?: aiMediaPlayer?.currentPosition?.toLong() ?: 0L
+            
+            while (isActive) {
+                val player = aiMediaPlayer
+                if (player != null && player.isPlaying && !_aiIsSeeking.value) {
+                    val elapsedRealtime = java.lang.System.currentTimeMillis() - startTime
+                    val estimatedPos = initialPlayerPos + elapsedRealtime
+                    
+                    val actualPos = player.currentPosition.toLong()
+                    val drift = Math.abs(estimatedPos - actualPos)
+                    val finalPos = if (drift > 250) actualPos else estimatedPos
+                    _aiPlayerCurrentPosMs.value = finalPos
+
+                    if (stopTimeMs != null && finalPos >= stopTimeMs) {
+                        player.pause()
+                        _aiPlayerIsPlaying.value = false
+                        _aiPlayerCurrentPosMs.value = stopTimeMs
+                        break
+                    }
+                    
+                    if (stopTimeMs == null) {
+                        matchAiActiveLineWithTime(finalPos)
+                    }
+                }
+                delay(16)
+            }
+        }
+    }
+
+    private fun stopAiPlayerTracking() {
+        aiPlayerTrackingJob?.cancel()
+        aiPlayerTrackingJob = null
+    }
+
+    private fun matchAiActiveLineWithTime(timeMs: Long) {
+        val lines = _aiSrtLines.value
+        for ((idx, line) in lines.withIndex()) {
+            if (timeMs >= line.startTimeMs && timeMs <= line.endTimeMs) {
+                if (_aiActiveLineIndex.value != idx) {
+                    _aiActiveLineIndex.value = idx
+                }
+                break
+            }
+        }
+    }
+
+    fun seekAiPlayerToMs(timeMs: Long) {
+        val player = aiMediaPlayer ?: return
+        _aiIsSeeking.value = true
+        _aiPlayerCurrentPosMs.value = timeMs
+        stopAiPlayerTracking()
+        player.setOnSeekCompleteListener {
+            _aiIsSeeking.value = false
+            _aiPlayerCurrentPosMs.value = timeMs
+            if (player.isPlaying) {
+                startAiPlayerTracking()
+            }
+        }
+        player.seekTo(timeMs.toInt())
+    }
+
+    fun stopCleanAiMediaPlayer() {
+        stopAiPlayerTracking()
+        try {
+            aiMediaPlayer?.apply {
+                if (isPlaying) {
+                    stop()
+                }
+                release()
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+        aiMediaPlayer = null
+        _aiPlayerIsPlaying.value = false
+        _aiPlayerCurrentPosMs.value = 0L
+        _aiPlayerDuration.value = 0L
     }
 
     fun setPreferredLanguage(lang: String) {
@@ -634,5 +1079,6 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
     override fun onCleared() {
         super.onCleared()
         stopMediaPlayer()
+        stopCleanAiMediaPlayer()
     }
 }

@@ -1232,3 +1232,471 @@ fun SettingsScreen(
         }
     }
 }
+
+@Composable
+fun AiSubtitleScreen(
+    viewModel: SubtitleStudioViewModel,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+
+    val aiAudioUri by viewModel.aiAudioFileUri.collectAsState()
+    val aiAudioName by viewModel.aiAudioFileName.collectAsState()
+    val aiMime by viewModel.aiAudioMimeType.collectAsState()
+    val aiCustomPrompt by viewModel.aiCustomPrompt.collectAsState()
+    val aiSourceText by viewModel.aiSourceText.collectAsState()
+    val aiTranscribeState by viewModel.aiTranscriptionState.collectAsState()
+    val aiLines by viewModel.aiSrtLines.collectAsState()
+    val aiActiveIndex by viewModel.aiActiveLineIndex.collectAsState()
+
+    val aiPlayerIsPlaying by viewModel.aiPlayerIsPlaying.collectAsState()
+    val aiPlayerPosMs by viewModel.aiPlayerCurrentPosMs.collectAsState()
+    val aiPlayerDurationMs by viewModel.aiPlayerDuration.collectAsState()
+
+    val fileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val projection = arrayOf(android.provider.OpenableColumns.DISPLAY_NAME)
+            var name = "Selected File"
+            try {
+                val cursor = context.contentResolver.query(uri, projection, null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex >= 0) {
+                            name = it.getString(nameIndex)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+            val mimeType = context.contentResolver.getType(uri) ?: "audio/mp3"
+            viewModel.setAiSelectedAudio(uri, name, mimeType)
+        }
+    }
+
+    val isAudio = aiMime?.startsWith("audio/") == true
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "AI Audio Transcription Studio",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+            if (aiAudioUri != null) {
+                IconButton(onClick = { viewModel.clearAiSelectedAudio() }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Clear selected file", tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+
+        if (aiAudioUri == null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Audiotrack,
+                        contentDescription = "Audio track",
+                        modifier = Modifier.size(72.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "To start transcribing, please select an audio or video file from your system.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(
+                        onClick = { fileLauncher.launch(arrayOf("audio/*", "video/*")) },
+                        modifier = Modifier.height(48.dp)
+                    ) {
+                        Icon(Icons.Filled.CloudUpload, contentDescription = "Pick")
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Select Audio/Video File")
+                    }
+                }
+            }
+        } else if (aiLines.isEmpty()) {
+            val setupScrollState = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(setupScrollState),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isAudio) Icons.Filled.Mic else Icons.Filled.Movie,
+                            contentDescription = "File indicator",
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
+                        Column {
+                            Text(text = aiAudioName ?: "File", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(text = "Type: $aiMime", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                if (!isAudio) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
+                    ) {
+                        Text(
+                            text = "Warning: Option 1 is exclusively available for Audio files. Video transcription will be supported in coming options.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "Option 1: Audio SRT Transcriber via Gemini",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+
+                    OutlinedTextField(
+                        value = aiCustomPrompt,
+                        onValueChange = { viewModel.setAiCustomPrompt(it) },
+                        label = { Text("AI Instructions / System Prompt") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp, max = 220.dp),
+                        supportingText = { Text("Supports '[sourceTextPlaceholder]' placeholder which dynamically swaps with the lines below.") }
+                    )
+
+                    OutlinedTextField(
+                        value = aiSourceText,
+                        onValueChange = { viewModel.setAiSourceText(it) },
+                        label = { Text("Source Text Lines (Optional)") },
+                        placeholder = { Text("text1\ntext2\ntext3...") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp, max = 200.dp),
+                        supportingText = { Text("If provided, Gemini forces each output SRT block line to align exactly with each source row.") }
+                    )
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(text = "Transcription Log:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            
+                            val statusLogStr = when (val s = aiTranscribeState) {
+                                is GeminiApiClient.CallStepState.Idle -> "Ready to start transcription."
+                                is GeminiApiClient.CallStepState.Sending -> "🔄 Directing multimodal audio to Gemini utilizing key ${s.keyDesc} with model [${s.model}]..."
+                                is GeminiApiClient.CallStepState.RetryingRateLimit -> "⚠️ Limited (429): Retrying in [${s.delaySecondsLeft}s] (Key ${s.keyDesc})..."
+                                is GeminiApiClient.CallStepState.VpnBlockPrompt -> "🛑 Geo-blocked (400/403): Toggle/Check your VPN and click RESUME."
+                                is GeminiApiClient.CallStepState.Success -> "✓ Completed: ${s.responseText.take(150)}..."
+                                is GeminiApiClient.CallStepState.OutOfOptions -> "❌ Failed: ${s.error}"
+                                else -> "Waiting..."
+                            }
+
+                            Text(
+                                text = statusLogStr,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            if (aiTranscribeState is GeminiApiClient.CallStepState.VpnBlockPrompt) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = { (aiTranscribeState as GeminiApiClient.CallStepState.VpnBlockPrompt).onContinuePressed() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                ) {
+                                    Text("Resume Flow")
+                                }
+                            }
+                        }
+                    }
+
+                    val isRunning = aiTranscribeState is GeminiApiClient.CallStepState.Sending || 
+                                    aiTranscribeState is GeminiApiClient.CallStepState.RetryingRateLimit
+
+                    Button(
+                        onClick = { viewModel.startAiTranscription() },
+                        enabled = !isRunning,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                    ) {
+                        if (isRunning) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Uploading file & waiting response...")
+                        } else {
+                            Icon(Icons.Filled.VideoSettings, contentDescription = "Transcribe")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Generate Subtitles via Gemini")
+                        }
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.AudioFile, contentDescription = "Audio track", tint = MaterialTheme.colorScheme.primary)
+                            Text(text = aiAudioName ?: "Subtitles", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        }
+                        
+                        OutlinedButton(
+                            onClick = { viewModel.clearAiSelectedAudio() },
+                            modifier = Modifier.height(36.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp)
+                        ) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Reset/Change file", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Change File", fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { viewModel.toggleAiPlayback() }) {
+                                Icon(
+                                    imageVector = if (aiPlayerIsPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = "Play/Pause",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+
+                            Button(
+                                onClick = { viewModel.playAiCurrentLineSegment() },
+                                modifier = Modifier.height(40.dp)
+                            ) {
+                                Icon(Icons.Filled.PlayCircle, contentDescription = "Play line segment")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Play Active Segment")
+                            }
+
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            Text(
+                                text = "${SrtParser.formatTime(aiPlayerPosMs)} / ${SrtParser.formatTime(aiPlayerDurationMs)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Slider(
+                            value = if (aiPlayerDurationMs > 0) aiPlayerPosMs.toFloat() / aiPlayerDurationMs.toFloat() else 0f,
+                            onValueChange = {
+                                val target = (it * aiPlayerDurationMs.toFloat()).toLong()
+                                viewModel.seekAiPlayerToMs(target)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                val activeLine = aiLines.getOrNull(aiActiveIndex)
+                if (activeLine != null) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Editing Block #${activeLine.index}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Line ${aiActiveIndex + 1} of ${aiLines.size}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            OutlinedTextField(
+                                value = activeLine.text,
+                                onValueChange = { viewModel.updateAiLineText(aiActiveIndex, it) },
+                                label = { Text("Subtitle Text") },
+                                modifier = Modifier.fillMaxWidth().testTag("ai_srt_text_input")
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = "Start Time: ${SrtParser.formatTime(activeLine.startTimeMs)}", style = MaterialTheme.typography.bodySmall)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        OutlinedButton(
+                                            onClick = { viewModel.updateAiLineTiming(aiActiveIndex, (activeLine.startTimeMs - 100).coerceAtLeast(0), activeLine.endTimeMs) },
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) { Text("-100ms", fontSize = 11.sp) }
+                                        OutlinedButton(
+                                            onClick = { viewModel.updateAiLineTiming(aiActiveIndex, (activeLine.startTimeMs + 100).coerceAtMost(activeLine.endTimeMs), activeLine.endTimeMs) },
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) { Text("+100ms", fontSize = 11.sp) }
+                                    }
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = "End Time: ${SrtParser.formatTime(activeLine.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        OutlinedButton(
+                                            onClick = { viewModel.updateAiLineTiming(aiActiveIndex, activeLine.startTimeMs, (activeLine.endTimeMs - 100).coerceAtLeast(activeLine.startTimeMs)) },
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) { Text("-100ms", fontSize = 11.sp) }
+                                        OutlinedButton(
+                                            onClick = { viewModel.updateAiLineTiming(aiActiveIndex, activeLine.startTimeMs, activeLine.endTimeMs + 100) },
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) { Text("+100ms", fontSize = 11.sp) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Subtitle Blocks (Tap row to edit and jump player timing)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                val listState = rememberLazyListState()
+                
+                LaunchedEffect(aiActiveIndex) {
+                    if (aiActiveIndex >= 0 && aiActiveIndex < aiLines.size) {
+                        listState.animateScrollToItem(aiActiveIndex)
+                    }
+                }
+
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(aiLines) { idx, item ->
+                        val isCurrent = idx == aiActiveIndex
+                        Card(
+                            onClick = { viewModel.setAiActiveLineIndex(idx) },
+                            modifier = Modifier.fillMaxWidth().testTag("ai_srt_item_$idx"),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isCurrent) 
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) 
+                                else 
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                            ),
+                            border = if (isCurrent) 
+                                androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) 
+                            else 
+                                null
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "#${item.index}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        text = "${SrtParser.formatTime(item.startTimeMs)} --> ${SrtParser.formatTime(item.endTimeMs)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = item.text,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
