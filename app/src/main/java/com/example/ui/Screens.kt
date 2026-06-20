@@ -1279,17 +1279,124 @@ fun AiSubtitleScreen(
 
     val isAudio = aiMime?.startsWith("audio/") == true
 
+    // Option 2 Tap to Sync State Collection
+    val studioOption by viewModel.studioOptionSetting.collectAsState()
+
+    val tapAudioUri by viewModel.tapAudioFileUri.collectAsState()
+    val tapAudioName by viewModel.tapAudioFileName.collectAsState()
+    val tapMime by viewModel.tapAudioMimeType.collectAsState()
+    val tapTxtUri by viewModel.tapSourceTxtFileUri.collectAsState()
+    val tapTxtName by viewModel.tapSourceTxtFileName.collectAsState()
+    val tapTxtLines by viewModel.tapSourceTxtLines.collectAsState()
+    val tapSrtLines by viewModel.tapSrtLines.collectAsState()
+    val tapActiveIndex by viewModel.tapActiveLineIndex.collectAsState()
+    val tapIsRecording by viewModel.tapIsRecording.collectAsState()
+
+    val tapPlayerIsPlaying by viewModel.tapPlayerIsPlaying.collectAsState()
+    val tapPlayerPosMs by viewModel.tapPlayerCurrentPosMs.collectAsState()
+    val tapPlayerDurationMs by viewModel.tapPlayerDuration.collectAsState()
+
+    androidx.activity.compose.BackHandler(enabled = (studioOption == 1 && aiAudioUri != null) || (studioOption == 2 && tapAudioUri != null)) {
+        if (studioOption == 1) {
+            viewModel.clearAiSelectedAudio()
+        } else {
+            viewModel.clearTapSelectedAudio()
+        }
+    }
+
+    val tapFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val projection = arrayOf(android.provider.OpenableColumns.DISPLAY_NAME)
+            var name = "Selected File"
+            try {
+                val cursor = context.contentResolver.query(uri, projection, null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex >= 0) {
+                            name = it.getString(nameIndex)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+            val mimeType = context.contentResolver.getType(uri) ?: "audio/mp3"
+            viewModel.setTapSelectedAudio(uri, name, mimeType)
+        }
+    }
+
+    val txtFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val projection = arrayOf(android.provider.OpenableColumns.DISPLAY_NAME)
+            var name = "Selected Text"
+            try {
+                val cursor = context.contentResolver.query(uri, projection, null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex >= 0) {
+                            name = it.getString(nameIndex)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+            viewModel.setTapSourceTxtFile(uri, name)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Option Selector tabs
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            Button(
+                onClick = { viewModel.setStudioOption(1) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (studioOption == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (studioOption == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f).height(48.dp)
+            ) {
+                Icon(Icons.Filled.Mic, contentDescription = "AI Option")
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Option 1: AI Gemini")
+            }
+
+            Button(
+                onClick = { viewModel.setStudioOption(2) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (studioOption == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (studioOption == 2) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f).height(48.dp)
+            ) {
+                Icon(Icons.Filled.Segment, contentDescription = "Manual Option")
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Option 2: Tap-to-Sync")
+            }
+        }
+
+        if (studioOption == 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
             Text(
                 text = "AI Audio Transcription Studio",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
@@ -1692,6 +1799,439 @@ fun AiSubtitleScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+            // --- OPTION 2 CONTENT (TAP-TO-SYNC MANUAL MODE) ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Tap-to-Sync subtitler",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (tapAudioUri != null) {
+                    IconButton(onClick = { viewModel.clearTapSelectedAudio() }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Clear selected file", tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            if (tapAudioUri == null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Timer,
+                            contentDescription = "Manual Sync Track",
+                            modifier = Modifier.size(72.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Generate and sync subtitles manually. Simply load an Audio or Video file and optionally a text source to sync to, then 'tap' to record the timestamps live!",
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = { tapFileLauncher.launch(arrayOf("audio/*", "video/*")) },
+                            modifier = Modifier.height(48.dp)
+                        ) {
+                            Icon(Icons.Filled.CloudUpload, contentDescription = "Pick")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Select Audio/Video File")
+                        }
+                    }
+                }
+            } else {
+                // Interactive Studio Layout
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Audio & Txt Loaded Indicator Row
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Filled.AudioFile, contentDescription = "Track file", tint = MaterialTheme.colorScheme.primary)
+                                    Text(
+                                        text = tapAudioName ?: "Selected File",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = { viewModel.clearTapSelectedAudio() },
+                                    modifier = Modifier.height(32.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp)
+                                ) {
+                                    Text("Change File", fontSize = 11.sp)
+                                }
+                            }
+
+                            Divider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Filled.TextFormat, contentDescription = "TXT Source file", tint = MaterialTheme.colorScheme.secondary)
+                                    Text(
+                                        text = if (tapTxtUri != null) "TXT Source: $tapTxtName (${tapTxtLines.size} lines)" else "No TXT source loaded (optional)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (tapTxtUri != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                        maxLines = 1
+                                    )
+                                }
+
+                                if (tapTxtUri != null) {
+                                    OutlinedButton(
+                                        onClick = { viewModel.clearTapSourceTxtFile() },
+                                        modifier = Modifier.height(32.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                        contentPadding = PaddingValues(horizontal = 6.dp)
+                                    ) {
+                                        Text("Clear Source", fontSize = 11.sp)
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = { txtFileLauncher.launch(arrayOf("text/plain")) },
+                                        modifier = Modifier.height(32.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                        contentPadding = PaddingValues(horizontal = 8.dp)
+                                    ) {
+                                        Icon(Icons.Filled.CloudUpload, contentDescription = "Load text", modifier = Modifier.size(12.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Load .txt lines", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Tapping Panel & Controls
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = if (tapIsRecording) "🔴 RECORDING TIMING LIVE" else "READY TO TAP TIMINGS",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = if (tapIsRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            )
+
+                            Button(
+                                onClick = { viewModel.tapTimingButton() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(64.dp)
+                                    .testTag("tap_timing_live_button"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (tapIsRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Icon(Icons.Filled.Timer, contentDescription = "Tap timing button")
+                                Spacer(modifier = Modifier.width(12.dp))
+                                val label = if (!tapIsRecording) {
+                                    "Tap to Start Block 1"
+                                } else {
+                                    val nextNum = tapSrtLines.size + 1
+                                    val nextTxt = tapTxtLines.getOrNull(nextNum - 1)
+                                    if (nextTxt != null) "Tap (Line $nextNum: \"${nextTxt.take(20)}...\")" else "Tap for next SRT line ($nextNum)"
+                                }
+                                Text(label, style = MaterialTheme.typography.titleMedium)
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { viewModel.undoLastTap() },
+                                    enabled = tapSrtLines.isNotEmpty(),
+                                    modifier = Modifier.weight(1f).height(44.dp)
+                                ) {
+                                    Icon(Icons.Filled.Refresh, contentDescription = "Undo")
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Un-tap / Undo")
+                                }
+
+                                if (tapIsRecording) {
+                                    Button(
+                                        onClick = { viewModel.finishRecordingTiming() },
+                                        modifier = Modifier.weight(1f).height(44.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                                    ) {
+                                        Text("Finish & Save")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Playback Controller Controls Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(onClick = { viewModel.seekTapBackward(5000) }) {
+                                        Icon(Icons.Filled.Remove, contentDescription = "-5s", tint = MaterialTheme.colorScheme.primary)
+                                    }
+
+                                    IconButton(onClick = { viewModel.toggleTapPlayback() }) {
+                                        Icon(
+                                            imageVector = if (tapPlayerIsPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                            contentDescription = "Play/Pause",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                    }
+
+                                    IconButton(onClick = { viewModel.seekTapForward(5000) }) {
+                                        Icon(Icons.Filled.Add, contentDescription = "+5s", tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+
+                                Text(
+                                    text = "${SrtParser.formatTime(tapPlayerPosMs)} / ${SrtParser.formatTime(tapPlayerDurationMs)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Slider(
+                                value = if (tapPlayerDurationMs > 0) tapPlayerPosMs.toFloat() / tapPlayerDurationMs.toFloat() else 0f,
+                                onValueChange = {
+                                    val target = (it * tapPlayerDurationMs.toFloat()).toLong()
+                                    viewModel.seekTapPlayerToMs(target)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+
+                    // Active Line Edit Editor
+                    val activeTapLine = tapSrtLines.getOrNull(tapActiveIndex)
+                    if (activeTapLine != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Editing Block #${activeTapLine.index}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                    Text(
+                                        text = "Line ${tapActiveIndex + 1} of ${tapSrtLines.size}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                OutlinedTextField(
+                                    value = activeTapLine.text,
+                                    onValueChange = { viewModel.updateTapLineText(tapActiveIndex, it) },
+                                    label = { Text("Line Content text") },
+                                    modifier = Modifier.fillMaxWidth().testTag("tap_srt_text_input")
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = "Start: ${SrtParser.formatTime(activeTapLine.startTimeMs)}", style = MaterialTheme.typography.bodySmall)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            OutlinedButton(
+                                                onClick = { viewModel.updateTapLineTiming(tapActiveIndex, (activeTapLine.startTimeMs - 100).coerceAtLeast(0), activeTapLine.endTimeMs) },
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) { Text("-100ms", fontSize = 11.sp) }
+                                            OutlinedButton(
+                                                onClick = { viewModel.updateTapLineTiming(tapActiveIndex, (activeTapLine.startTimeMs + 100).coerceAtMost(activeTapLine.endTimeMs), activeTapLine.endTimeMs) },
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) { Text("+100ms", fontSize = 11.sp) }
+                                        }
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = "End: ${SrtParser.formatTime(activeTapLine.endTimeMs)}", style = MaterialTheme.typography.bodySmall)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            OutlinedButton(
+                                                onClick = { viewModel.updateTapLineTiming(tapActiveIndex, activeTapLine.startTimeMs, (activeTapLine.endTimeMs - 100).coerceAtLeast(activeTapLine.startTimeMs)) },
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) { Text("-100ms", fontSize = 11.sp) }
+                                            OutlinedButton(
+                                                onClick = { viewModel.updateTapLineTiming(tapActiveIndex, activeTapLine.startTimeMs, activeTapLine.endTimeMs + 100) },
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) { Text("+100ms", fontSize = 11.sp) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Generated Timelines (${tapSrtLines.size} entries)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        if (tapSrtLines.isNotEmpty()) {
+                            Button(
+                                onClick = {
+                                    val exportedFile = viewModel.exportTapSrtToDownloads()
+                                    if (exportedFile != null) {
+                                        android.widget.Toast.makeText(context, "Exported successfully to Downloads/yt-subs/$exportedFile", android.widget.Toast.LENGTH_LONG).show()
+                                    } else {
+                                        android.widget.Toast.makeText(context, "Export failed. Please check files.", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.height(32.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                contentPadding = PaddingValues(horizontal = 8.dp)
+                            ) {
+                                Icon(Icons.Filled.Save, contentDescription = "Save and export", modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Export SRT", fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    val tapListState = rememberLazyListState()
+
+                    LaunchedEffect(tapActiveIndex) {
+                        if (tapActiveIndex >= 0 && tapActiveIndex < tapSrtLines.size) {
+                            tapListState.animateScrollToItem(tapActiveIndex)
+                        }
+                    }
+
+                    LazyColumn(
+                        state = tapListState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        itemsIndexed(tapSrtLines) { idx, item ->
+                            val isCurrent = idx == tapActiveIndex
+                            Card(
+                                onClick = { viewModel.setTapActiveLineIndex(idx) },
+                                modifier = Modifier.fillMaxWidth().testTag("tap_srt_item_$idx"),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isCurrent) 
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) 
+                                    else 
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                                ),
+                                border = if (isCurrent) 
+                                    androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) 
+                                else 
+                                    null
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(text = "Block #${item.index}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                                        Text(
+                                            text = "${SrtParser.formatTime(item.startTimeMs)} --> ${SrtParser.formatTime(item.endTimeMs)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = item.text,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
                             }
                         }
                     }

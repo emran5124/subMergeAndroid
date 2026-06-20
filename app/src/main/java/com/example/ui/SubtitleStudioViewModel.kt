@@ -160,6 +160,56 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     private val _aiIsSeeking = MutableStateFlow(false)
     val aiIsSeeking: StateFlow<Boolean> = _aiIsSeeking.asStateFlow()
 
+    // --- Tap SRT (Option 2) States ---
+    private val _tapAudioFileUri = MutableStateFlow<Uri?>(null)
+    val tapAudioFileUri: StateFlow<Uri?> = _tapAudioFileUri.asStateFlow()
+
+    private val _tapAudioFileName = MutableStateFlow<String?>(null)
+    val tapAudioFileName: StateFlow<String?> = _tapAudioFileName.asStateFlow()
+
+    private val _tapAudioMimeType = MutableStateFlow<String?>(null)
+    val tapAudioMimeType: StateFlow<String?> = _tapAudioMimeType.asStateFlow()
+
+    private val _tapSourceTxtFileUri = MutableStateFlow<Uri?>(null)
+    val tapSourceTxtFileUri: StateFlow<Uri?> = _tapSourceTxtFileUri.asStateFlow()
+
+    private val _tapSourceTxtFileName = MutableStateFlow<String?>(null)
+    val tapSourceTxtFileName: StateFlow<String?> = _tapSourceTxtFileName.asStateFlow()
+
+    private val _tapSourceTxtLines = MutableStateFlow<List<String>>(emptyList())
+    val tapSourceTxtLines: StateFlow<List<String>> = _tapSourceTxtLines.asStateFlow()
+
+    private val _tapSrtLines = MutableStateFlow<List<SrtParser.SrtLine>>(emptyList())
+    val tapSrtLines: StateFlow<List<SrtParser.SrtLine>> = _tapSrtLines.asStateFlow()
+
+    private val _tapActiveLineIndex = MutableStateFlow(0)
+    val tapActiveLineIndex: StateFlow<Int> = _tapActiveLineIndex.asStateFlow()
+
+    private val _tapIsRecording = MutableStateFlow(false)
+    val tapIsRecording: StateFlow<Boolean> = _tapIsRecording.asStateFlow()
+
+    private val _tapCurrentRecordingStartMs = MutableStateFlow(0L)
+    val tapCurrentRecordingStartMs: StateFlow<Long> = _tapCurrentRecordingStartMs.asStateFlow()
+
+    // Tap Media Player state
+    private var tapMediaPlayer: MediaPlayer? = null
+    private var tapPlayerTrackingJob: Job? = null
+
+    private val _tapPlayerIsPlaying = MutableStateFlow(false)
+    val tapPlayerIsPlaying: StateFlow<Boolean> = _tapPlayerIsPlaying.asStateFlow()
+
+    private val _tapPlayerCurrentPosMs = MutableStateFlow(0L)
+    val tapPlayerCurrentPosMs: StateFlow<Long> = _tapPlayerCurrentPosMs.asStateFlow()
+
+    private val _tapPlayerDuration = MutableStateFlow(0L)
+    val tapPlayerDuration: StateFlow<Long> = _tapPlayerDuration.asStateFlow()
+
+    private val _tapIsSeeking = MutableStateFlow(false)
+    val tapIsSeeking: StateFlow<Boolean> = _tapIsSeeking.asStateFlow()
+
+    private val _studioOptionSetting = MutableStateFlow(1)
+    val studioOptionSetting: StateFlow<Int> = _studioOptionSetting.asStateFlow()
+
     init {
         viewModelScope.launch {
             // Load preferred Language
@@ -198,6 +248,46 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                     Log.e("SubtitleStudioViewModel", "Error loading cached AI audio settings", e)
                 }
             }
+
+            // Load Tap Subtitle Settings for Option 2
+            val cachedTapAudioUriStr = repository.getSettingValue("tap_selected_audio_uri", "")
+            if (cachedTapAudioUriStr.isNotEmpty()) {
+                try {
+                    val uri = Uri.parse(cachedTapAudioUriStr)
+                    _tapAudioFileUri.value = uri
+                    _tapAudioFileName.value = repository.getSettingValue("tap_selected_audio_name", "Selected Audio")
+                    _tapAudioMimeType.value = repository.getSettingValue("tap_selected_audio_mime", "audio/*")
+
+                    // Load SRT lines for option 2
+                    val linesJson = repository.getSettingValue("tap_srt_lines_$cachedTapAudioUriStr", "")
+                    if (linesJson.isNotEmpty()) {
+                        _tapSrtLines.value = aiLinesFromJson(linesJson)
+                    }
+
+                    initializeTapMediaPlayer(uri)
+                } catch (e: Exception) {
+                    Log.e("SubtitleStudioViewModel", "Error loading cached Tap audio settings", e)
+                }
+            }
+
+            val cachedTxtUriStr = repository.getSettingValue("tap_txt_file_uri", "")
+            if (cachedTxtUriStr.isNotEmpty()) {
+                try {
+                    _tapSourceTxtFileUri.value = Uri.parse(cachedTxtUriStr)
+                    _tapSourceTxtFileName.value = repository.getSettingValue("tap_txt_file_name", "Selected TXT")
+                    val rawTxtData = repository.getSettingValue("tap_source_txt", "")
+                    if (rawTxtData.isNotEmpty()) {
+                        _tapSourceTxtLines.value = rawTxtData.split("\n")
+                    }
+                } catch (e: Exception) {
+                    Log.e("SubtitleStudioViewModel", "Error loading cached Txt settings", e)
+                }
+            }
+
+            _tapIsRecording.value = repository.getSettingValue("tap_is_recording", "false") == "true"
+            _tapCurrentRecordingStartMs.value = repository.getSettingValue("tap_current_rec_start_ms", "0").toLongOrNull() ?: 0L
+            _tapActiveLineIndex.value = repository.getSettingValue("tap_active_line_index", "0").toIntOrNull() ?: 0
+            _studioOptionSetting.value = repository.getSettingValue("studio_option_setting", "1").toIntOrNull() ?: 1
         }
     }
 
@@ -1076,9 +1166,437 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         Log.d(TAG, msg)
     }
 
+    // --- Option 2 Tap to Sync Functions ---
+
+    fun setTapSelectedAudio(uri: Uri, name: String, mimeType: String) {
+        _tapAudioFileUri.value = uri
+        _tapAudioFileName.value = name
+        _tapAudioMimeType.value = mimeType
+        _tapActiveLineIndex.value = 0
+        _tapSrtLines.value = emptyList()
+        _tapIsRecording.value = false
+        _tapCurrentRecordingStartMs.value = 0L
+
+        viewModelScope.launch {
+            repository.saveSetting("tap_selected_audio_uri", uri.toString())
+            repository.saveSetting("tap_selected_audio_name", name)
+            repository.saveSetting("tap_selected_audio_mime", mimeType)
+            repository.saveSetting("tap_is_recording", "false")
+            repository.saveSetting("tap_current_rec_start_ms", "0")
+            repository.saveSetting("tap_active_line_index", "0")
+
+            // Try loading cached subtitles for this specific URI
+            val cachedJson = repository.getSettingValue("tap_srt_lines_$uri", "")
+            if (cachedJson.isNotEmpty()) {
+                _tapSrtLines.value = aiLinesFromJson(cachedJson)
+            }
+            initializeTapMediaPlayer(uri)
+        }
+    }
+
+    fun clearTapSelectedAudio() {
+        stopCleanTapMediaPlayer()
+        _tapAudioFileUri.value = null
+        _tapAudioFileName.value = null
+        _tapAudioMimeType.value = null
+        _tapSrtLines.value = emptyList()
+        _tapActiveLineIndex.value = 0
+        _tapIsRecording.value = false
+        _tapCurrentRecordingStartMs.value = 0L
+        viewModelScope.launch {
+            repository.saveSetting("tap_selected_audio_uri", "")
+            repository.saveSetting("tap_selected_audio_name", "")
+            repository.saveSetting("tap_selected_audio_mime", "")
+            repository.saveSetting("tap_is_recording", "false")
+            repository.saveSetting("tap_current_rec_start_ms", "0")
+            repository.saveSetting("tap_active_line_index", "0")
+        }
+    }
+
+    private fun initializeTapMediaPlayer(uri: Uri) {
+        stopCleanTapMediaPlayer()
+        try {
+            tapMediaPlayer = MediaPlayer().apply {
+                setDataSource(context, uri)
+                prepare()
+                _tapPlayerDuration.value = duration.toLong()
+            }
+            _tapPlayerIsPlaying.value = false
+            _tapPlayerCurrentPosMs.value = 0L
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize Tap Media Player for URI $uri", e)
+        }
+    }
+
+    fun toggleTapPlayback() {
+        val player = tapMediaPlayer ?: return
+        if (player.isPlaying) {
+            player.pause()
+            _tapPlayerIsPlaying.value = false
+            stopTapPlayerTracking()
+        } else {
+            player.start()
+            _tapPlayerIsPlaying.value = true
+            startTapPlayerTracking()
+        }
+    }
+
+    fun stopCleanTapMediaPlayer() {
+        stopTapPlayerTracking()
+        try {
+            tapMediaPlayer?.apply {
+                if (isPlaying) {
+                    stop()
+                }
+                release()
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+        tapMediaPlayer = null
+        _tapPlayerIsPlaying.value = false
+        _tapPlayerCurrentPosMs.value = 0L
+        _tapPlayerDuration.value = 0L
+    }
+
+    private fun startTapPlayerTracking() {
+        stopTapPlayerTracking()
+        tapPlayerTrackingJob = viewModelScope.launch(Dispatchers.Main) {
+            val startTime = java.lang.System.currentTimeMillis()
+            val initialPlayerPos = tapMediaPlayer?.currentPosition?.toLong() ?: 0L
+            
+            while (isActive) {
+                val player = tapMediaPlayer
+                if (player != null && player.isPlaying && !_tapIsSeeking.value) {
+                    val elapsedRealtime = java.lang.System.currentTimeMillis() - startTime
+                    val estimatedPos = initialPlayerPos + elapsedRealtime
+                    
+                    val actualPos = player.currentPosition.toLong()
+                    val drift = Math.abs(estimatedPos - actualPos)
+                    val finalPos = if (drift > 250) actualPos else estimatedPos
+                    _tapPlayerCurrentPosMs.value = finalPos
+                    
+                    matchTapActiveLineWithTime(finalPos)
+                }
+                delay(16)
+            }
+        }
+    }
+
+    private fun stopTapPlayerTracking() {
+        tapPlayerTrackingJob?.cancel()
+        tapPlayerTrackingJob = null
+    }
+
+    private fun matchTapActiveLineWithTime(timeMs: Long) {
+        val lines = _tapSrtLines.value
+        if (_tapIsRecording.value) return
+        for ((idx, line) in lines.withIndex()) {
+            if (timeMs >= line.startTimeMs && timeMs <= line.endTimeMs) {
+                if (_tapActiveLineIndex.value != idx) {
+                    _tapActiveLineIndex.value = idx
+                    saveCurrentTapActiveLineIndex(idx)
+                }
+                break
+            }
+        }
+    }
+
+    fun seekTapPlayerToMs(timeMs: Long) {
+        val player = tapMediaPlayer ?: return
+        _tapIsSeeking.value = true
+        _tapPlayerCurrentPosMs.value = timeMs
+        stopTapPlayerTracking()
+        player.setOnSeekCompleteListener {
+            _tapIsSeeking.value = false
+            _tapPlayerCurrentPosMs.value = timeMs
+            if (player.isPlaying) {
+                startTapPlayerTracking()
+            }
+        }
+        player.seekTo(timeMs.toInt())
+    }
+
+    fun seekTapForward(millis: Long = 5000L) {
+        val player = tapMediaPlayer ?: return
+        val current = player.currentPosition.toLong()
+        val target = (current + millis).coerceAtMost(_tapPlayerDuration.value)
+        seekTapPlayerToMs(target)
+    }
+
+    fun seekTapBackward(millis: Long = 5000L) {
+        val player = tapMediaPlayer ?: return
+        val current = player.currentPosition.toLong()
+        val target = (current - millis).coerceAtLeast(0L)
+        seekTapPlayerToMs(target)
+    }
+
+    fun tapTimingButton() {
+        val player = tapMediaPlayer ?: return
+        val currentPlayMs = player.currentPosition.toLong()
+
+        val list = _tapSrtLines.value.toMutableList()
+        val txtLines = _tapSourceTxtLines.value
+
+        if (!_tapIsRecording.value) {
+            // First click: mark start of the first SRT block
+            val nextIdx = list.size + 1
+            val preText = txtLines.getOrNull(nextIdx - 1) ?: "Line $nextIdx"
+            
+            val newBlock = SrtParser.SrtLine(
+                index = nextIdx,
+                startTimeMs = currentPlayMs,
+                endTimeMs = currentPlayMs + 1000L, // placeholder end (will be updated on next tap)
+                text = preText
+            )
+            list.add(newBlock)
+            _tapSrtLines.value = list
+            _tapIsRecording.value = true
+            _tapCurrentRecordingStartMs.value = currentPlayMs
+            _tapActiveLineIndex.value = list.lastIndex
+
+            viewModelScope.launch {
+                repository.saveSetting("tap_is_recording", "true")
+                repository.saveSetting("tap_current_rec_start_ms", currentPlayMs.toString())
+                saveCurrentTapActiveLineIndex(list.lastIndex)
+                saveCurrentTapSrtLines()
+            }
+        } else {
+            // Next click: end current block, start next block
+            if (list.isNotEmpty()) {
+                val lastIdx = list.lastIndex
+                val lastBlock = list[lastIdx]
+                list[lastIdx] = lastBlock.copy(endTimeMs = currentPlayMs)
+            }
+
+            // Start the next block immediately
+            val nextIdx = list.size + 1
+            val preText = txtLines.getOrNull(nextIdx - 1) ?: "Line $nextIdx"
+            
+            val newBlock = SrtParser.SrtLine(
+                index = nextIdx,
+                startTimeMs = currentPlayMs,
+                endTimeMs = currentPlayMs + 1000L, // placeholder
+                text = preText
+            )
+            list.add(newBlock)
+            _tapSrtLines.value = list
+            _tapCurrentRecordingStartMs.value = currentPlayMs
+            _tapActiveLineIndex.value = list.lastIndex
+
+            viewModelScope.launch {
+                repository.saveSetting("tap_is_recording", "true")
+                repository.saveSetting("tap_current_rec_start_ms", currentPlayMs.toString())
+                saveCurrentTapActiveLineIndex(list.lastIndex)
+                saveCurrentTapSrtLines()
+            }
+        }
+    }
+
+    fun finishRecordingTiming() {
+        val player = tapMediaPlayer ?: return
+        val currentPlayMs = player.currentPosition.toLong()
+        val list = _tapSrtLines.value.toMutableList()
+
+        if (_tapIsRecording.value && list.isNotEmpty()) {
+            val lastIdx = list.lastIndex
+            list[lastIdx] = list[lastIdx].copy(endTimeMs = currentPlayMs)
+            _tapSrtLines.value = list
+            _tapIsRecording.value = false
+            _tapCurrentRecordingStartMs.value = 0L
+
+            viewModelScope.launch {
+                repository.saveSetting("tap_is_recording", "false")
+                repository.saveSetting("tap_current_rec_start_ms", "0")
+                saveCurrentTapSrtLines()
+            }
+        }
+    }
+
+    fun undoLastTap() {
+        val currentList = _tapSrtLines.value.toMutableList()
+        if (currentList.isEmpty()) return
+
+        if (currentList.size == 1) {
+            currentList.clear()
+            _tapSrtLines.value = emptyList()
+            _tapIsRecording.value = false
+            _tapCurrentRecordingStartMs.value = 0L
+            _tapActiveLineIndex.value = 0
+
+            viewModelScope.launch {
+                repository.saveSetting("tap_is_recording", "false")
+                repository.saveSetting("tap_current_rec_start_ms", "0")
+                saveCurrentTapActiveLineIndex(0)
+                saveCurrentTapSrtLines()
+            }
+        } else {
+            // Remove the last block (the one currently being recorded)
+            currentList.removeAt(currentList.lastIndex)
+            
+            // The previous block becomes the active block again
+            val lastIdx = currentList.lastIndex
+            val previousBlock = currentList[lastIdx]
+            _tapSrtLines.value = currentList
+            _tapIsRecording.value = true
+            _tapCurrentRecordingStartMs.value = previousBlock.startTimeMs
+            _tapActiveLineIndex.value = lastIdx
+
+            viewModelScope.launch {
+                repository.saveSetting("tap_is_recording", "true")
+                repository.saveSetting("tap_current_rec_start_ms", previousBlock.startTimeMs.toString())
+                saveCurrentTapActiveLineIndex(lastIdx)
+                saveCurrentTapSrtLines()
+            }
+        }
+    }
+
+    fun saveCurrentTapSrtLines() {
+        val uriStr = _tapAudioFileUri.value?.toString() ?: return
+        val current = _tapSrtLines.value
+        viewModelScope.launch {
+            repository.saveSetting("tap_srt_lines_$uriStr", aiLinesToJson(current))
+        }
+    }
+
+    private fun saveCurrentTapActiveLineIndex(idx: Int) {
+        viewModelScope.launch {
+            repository.saveSetting("tap_active_line_index", idx.toString())
+        }
+    }
+
+    fun updateTapLineText(index: Int, newText: String) {
+        val current = _tapSrtLines.value.toMutableList()
+        if (index >= 0 && index < current.size) {
+            val oldLine = current[index]
+            current[index] = oldLine.copy(text = newText)
+            _tapSrtLines.value = current
+            saveCurrentTapSrtLines()
+        }
+    }
+
+    fun updateTapLineTiming(index: Int, startMs: Long, endMs: Long) {
+        val current = _tapSrtLines.value.toMutableList()
+        if (index >= 0 && index < current.size) {
+            val oldLine = current[index]
+            current[index] = oldLine.copy(startTimeMs = startMs, endTimeMs = endMs)
+            _tapSrtLines.value = current
+            saveCurrentTapSrtLines()
+        }
+    }
+
+    fun setTapActiveLineIndex(index: Int) {
+        val currentLines = _tapSrtLines.value
+        if (index >= 0 && index < currentLines.size) {
+            _tapActiveLineIndex.value = index
+            saveCurrentTapActiveLineIndex(index)
+            seekTapPlayerToLineIndex(index)
+        }
+    }
+
+    private fun seekTapPlayerToLineIndex(index: Int) {
+        val player = tapMediaPlayer ?: return
+        val lines = _tapSrtLines.value
+        if (index < 0 || index >= lines.size) return
+
+        val line = lines[index]
+        _tapIsSeeking.value = true
+        _tapPlayerCurrentPosMs.value = line.startTimeMs
+        stopTapPlayerTracking()
+
+        player.setOnSeekCompleteListener {
+            _tapIsSeeking.value = false
+            _tapPlayerCurrentPosMs.value = line.startTimeMs
+            if (player.isPlaying) {
+                startTapPlayerTracking()
+            } else {
+                _tapPlayerIsPlaying.value = false
+            }
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            player.seekTo(line.startTimeMs, MediaPlayer.SEEK_CLOSEST)
+        } else {
+            player.seekTo(line.startTimeMs.toInt())
+        }
+    }
+
+    fun setTapSourceTxtFile(uri: Uri, name: String) {
+        _tapSourceTxtFileUri.value = uri
+        _tapSourceTxtFileName.value = name
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val text = inputStream?.use { it.bufferedReader(Charsets.UTF_8).readText() } ?: ""
+                val lines = text.split("\n")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                
+                withContext(Dispatchers.Main) {
+                    _tapSourceTxtLines.value = lines
+                    
+                    // If we already have SRT lines, let's update their texts to match incoming source txt line-by-line where possible, as requested!
+                    val srtList = _tapSrtLines.value.toMutableList()
+                    var changed = false
+                    for (i in 0 until srtList.size) {
+                        val txt = lines.getOrNull(i)
+                        if (txt != null && srtList[i].text != txt) {
+                            srtList[i] = srtList[i].copy(text = txt)
+                            changed = true
+                        }
+                    }
+                    if (changed) {
+                        _tapSrtLines.value = srtList
+                        saveCurrentTapSrtLines()
+                    }
+
+                    viewModelScope.launch {
+                        repository.saveSetting("tap_txt_file_uri", uri.toString())
+                        repository.saveSetting("tap_txt_file_name", name)
+                        repository.saveSetting("tap_source_txt", text)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to read text file", e)
+            }
+        }
+    }
+
+    fun clearTapSourceTxtFile() {
+        _tapSourceTxtFileUri.value = null
+        _tapSourceTxtFileName.value = null
+        _tapSourceTxtLines.value = emptyList()
+        viewModelScope.launch {
+            repository.saveSetting("tap_txt_file_uri", "")
+            repository.saveSetting("tap_txt_file_name", "")
+            repository.saveSetting("tap_source_txt", "")
+        }
+    }
+
+    fun exportTapSrtToDownloads(): String? {
+        val srtContent = SrtParser.buildSrt(_tapSrtLines.value)
+        if (srtContent.isEmpty()) return null
+
+        val rawName = _tapAudioFileName.value ?: "tap_subtitles"
+        val cleanName = rawName.substringBeforeLast(".").replace(" ", "_")
+        val fileName = "${cleanName}_subbed.srt"
+
+        val success = repository.saveYoutubeSrtToDownloads(fileName, srtContent)
+        return if (success) fileName else null
+    }
+
+    fun setStudioOption(option: Int) {
+        _studioOptionSetting.value = option
+        viewModelScope.launch {
+            repository.saveSetting("studio_option_setting", option.toString())
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         stopMediaPlayer()
         stopCleanAiMediaPlayer()
+        stopCleanTapMediaPlayer()
     }
 }
