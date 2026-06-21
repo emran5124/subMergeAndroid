@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -453,10 +455,14 @@ fun AiSubtitleScreen(
                                         .clip(RoundedCornerShape(8.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    VideoSurfaceView(
-                                        mediaPlayer = viewModel.aiMediaPlayer,
+                                    ZoomableVideoBox(
                                         modifier = Modifier.fillMaxSize()
-                                    )
+                                    ) {
+                                        VideoSurfaceView(
+                                            mediaPlayer = viewModel.aiMediaPlayer,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
 
                                     // Subtitle Overlay for AI Screen
                                     val currentLine = aiLines.find { aiPlayerPosMs >= it.startTimeMs && aiPlayerPosMs <= it.endTimeMs } 
@@ -619,12 +625,42 @@ fun AiSubtitleScreen(
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "Subtitle Blocks (Tap row to edit and jump player timing)",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    // Draggable Subtitles Header Block
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f), shape = RoundedCornerShape(8.dp))
+                            .pointerInput(Unit) {
+                                detectVerticalDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    viewModel.setTimelinesWeightFraction(
+                                        (timelinesWeightFraction - dragAmount * 0.002f).coerceIn(0.2f, 1.8f)
+                                    )
+                                }
+                            }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Top Drag handle pill
+                        Box(
+                            modifier = Modifier
+                                .width(48.dp)
+                                .height(4.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                    shape = RoundedCornerShape(2.dp)
+                                )
+                        )
+
+                        Text(
+                            text = "Subtitle Blocks (Tap row to edit & drag to resize)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
+                    }
 
                     val listState = rememberLazyListState()
                     
@@ -815,10 +851,14 @@ fun AiSubtitleScreen(
                                             .clip(RoundedCornerShape(8.dp)),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        VideoSurfaceView(
-                                            mediaPlayer = viewModel.tapMediaPlayer,
+                                        ZoomableVideoBox(
                                             modifier = Modifier.fillMaxSize()
-                                        )
+                                        ) {
+                                            VideoSurfaceView(
+                                                mediaPlayer = viewModel.tapMediaPlayer,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
 
                                         // Subtitle Overlay for Tap Screen (live display of tap subtitles)
                                         val currentLine = tapSrtLines.find { tapPlayerPosMs >= it.startTimeMs && tapPlayerPosMs <= it.endTimeMs }
@@ -963,10 +1003,6 @@ fun AiSubtitleScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(4.dp))
-                        LayoutSizeControls(viewModel = viewModel)
-                        Spacer(modifier = Modifier.height(8.dp))
-
                         // 2. Simple Unified Tapping Control Bar
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -1036,6 +1072,9 @@ fun AiSubtitleScreen(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LayoutSizeControls(viewModel = viewModel)
                     }
 
                     // Bottom Segment: Header and Lines list
@@ -1045,48 +1084,76 @@ fun AiSubtitleScreen(
                             .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // 4. Timelines Header Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        // 4. Draggable Timelines Header Block
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f), shape = RoundedCornerShape(8.dp))
+                                .pointerInput(Unit) {
+                                    detectVerticalDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        viewModel.setTimelinesWeightFraction(
+                                            (timelinesWeightFraction - dragAmount * 0.002f).coerceIn(0.2f, 1.8f)
+                                        )
+                                    }
+                                }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(
-                                text = "Timelines (${tapSrtLines.size} entries)",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            // Top Drag handle pill
+                            Box(
+                                modifier = Modifier
+                                    .width(48.dp)
+                                    .height(4.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                        shape = RoundedCornerShape(2.dp)
+                                    )
                             )
 
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                OutlinedButton(
-                                    onClick = { viewModel.addNewTapLinePlaceholder() },
-                                    modifier = Modifier.height(28.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp)
-                                ) {
-                                    Icon(Icons.Filled.Add, contentDescription = "Add Line", modifier = Modifier.size(12.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Add Line", fontSize = 10.sp)
-                                }
+                                Text(
+                                    text = "Timelines (${tapSrtLines.size} entries)",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
 
-                                if (tapSrtLines.isNotEmpty()) {
-                                    Button(
-                                        onClick = {
-                                            val rawName = tapAudioName ?: "subtitles"
-                                            val cleanName = rawName.substringBeforeLast(".").replace(" ", "_")
-                                            val defaultFileName = "${cleanName}_subbed.srt"
-                                            saveSrtLauncher.launch(defaultFileName)
-                                        },
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { viewModel.addNewTapLinePlaceholder() },
                                         modifier = Modifier.height(28.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                         contentPadding = PaddingValues(horizontal = 8.dp)
                                     ) {
-                                        Icon(Icons.Filled.Save, contentDescription = "Export SRT", modifier = Modifier.size(12.dp))
+                                        Icon(Icons.Filled.Add, contentDescription = "Add Line", modifier = Modifier.size(12.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Export SRT", fontSize = 10.sp)
+                                        Text("Add Line", fontSize = 10.sp)
+                                    }
+
+                                    if (tapSrtLines.isNotEmpty()) {
+                                        Button(
+                                            onClick = {
+                                                val rawName = tapAudioName ?: "subtitles"
+                                                val cleanName = rawName.substringBeforeLast(".").replace(" ", "_")
+                                                val defaultFileName = "${cleanName}_subbed.srt"
+                                                saveSrtLauncher.launch(defaultFileName)
+                                            },
+                                            modifier = Modifier.height(28.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                            contentPadding = PaddingValues(horizontal = 8.dp)
+                                        ) {
+                                            Icon(Icons.Filled.Save, contentDescription = "Export SRT", modifier = Modifier.size(12.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Export SRT", fontSize = 10.sp)
+                                        }
                                     }
                                 }
                             }

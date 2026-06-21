@@ -18,7 +18,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -59,10 +63,14 @@ fun ActiveMediaPlayerComponent(
                         .clip(RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    VideoSurfaceView(
-                        mediaPlayer = viewModel.mediaPlayer,
+                    ZoomableVideoBox(
                         modifier = Modifier.fillMaxSize()
-                    )
+                    ) {
+                        VideoSurfaceView(
+                            mediaPlayer = viewModel.mediaPlayer,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
 
                     // Subtitle Overlay
                     val lines by viewModel.srtLines.collectAsState()
@@ -442,6 +450,60 @@ fun isVideoFile(fileName: String?, mimeType: String?): Boolean {
     return name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".webm") || 
            name.endsWith(".avi") || name.endsWith(".mov") || name.endsWith(".3gp") || 
            name.endsWith(".flv") || name.endsWith(".mpeg") || name.endsWith(".mpg")
+}
+
+@Composable
+fun ZoomableVideoBox(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    scale = (scale * zoom).coerceIn(1f, 5f)
+                    if (scale == 1f) {
+                        offset = Offset.Zero
+                    } else {
+                        offset += pan
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    translationX = offset.x,
+                    translationY = offset.y
+                )
+        ) {
+            content()
+        }
+        
+        if (scale > 1f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), shape = RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "${"%.1f".format(scale)}x",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White
+                )
+            }
+        }
+    }
 }
 
 @Composable
