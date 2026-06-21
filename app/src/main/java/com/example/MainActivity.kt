@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
                     when (selectedTab) {
                         0 -> YoutubeExtractorScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
                         1 -> ReviewerScreen(viewModel = viewModel, modifier = bottomPaddingModifier)
-                        2 -> AiSubtitleScreen(viewModel = viewModel, modifier = bottomPaddingModifier)
+                        2 -> AiSubtitleScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
                         3 -> SettingsScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
                     }
                 }

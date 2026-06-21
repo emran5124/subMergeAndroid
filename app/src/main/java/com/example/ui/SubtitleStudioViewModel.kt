@@ -1284,7 +1284,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         _tapPlayerDuration.value = 0L
     }
 
-    private fun startTapPlayerTracking() {
+    private fun startTapPlayerTracking(stopTimeMs: Long? = null) {
         stopTapPlayerTracking()
         tapPlayerTrackingJob = viewModelScope.launch(Dispatchers.Main) {
             val startTime = java.lang.System.currentTimeMillis()
@@ -1300,6 +1300,15 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                     val drift = Math.abs(estimatedPos - actualPos)
                     val finalPos = if (drift > 250) actualPos else estimatedPos
                     _tapPlayerCurrentPosMs.value = finalPos
+                    
+                    if (stopTimeMs != null && stopTimeMs > 0 && finalPos >= stopTimeMs) {
+                        try {
+                            player.pause()
+                        } catch (e: Exception) {}
+                        _tapPlayerIsPlaying.value = false
+                        stopTapPlayerTracking()
+                        break
+                    }
                     
                     matchTapActiveLineWithTime(finalPos)
                 }
@@ -1431,8 +1440,20 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     }
 
     fun finishRecordingTiming() {
-        val player = tapMediaPlayer ?: return
-        val currentPlayMs = player.currentPosition.toLong()
+        val player = tapMediaPlayer
+        val currentPlayMs = player?.currentPosition?.toLong() ?: 0L
+        
+        // Pause player if playing
+        if (player != null && player.isPlaying) {
+            try {
+                player.pause()
+                _tapPlayerIsPlaying.value = false
+                stopTapPlayerTracking()
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+
         val list = _tapSrtLines.value.toMutableList()
 
         if (_tapIsRecording.value && list.isNotEmpty()) {
@@ -1445,6 +1466,11 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             viewModelScope.launch {
                 repository.saveSetting("tap_is_recording", "false")
                 repository.saveSetting("tap_current_rec_start_ms", "0")
+                saveCurrentTapSrtLines()
+            }
+        } else {
+            // Even if not actively recording, always make sure we persist latest edits
+            viewModelScope.launch {
                 saveCurrentTapSrtLines()
             }
         }
@@ -1544,9 +1570,13 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         player.setOnSeekCompleteListener {
             _tapIsSeeking.value = false
             _tapPlayerCurrentPosMs.value = line.startTimeMs
-            player.start()
+            try {
+                player.start()
+            } catch (e: Exception) {}
             _tapPlayerIsPlaying.value = true
-            startTapPlayerTracking()
+            
+            val stopAt = if (line.endTimeMs > line.startTimeMs) line.endTimeMs else null
+            startTapPlayerTracking(stopTimeMs = stopAt)
         }
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
