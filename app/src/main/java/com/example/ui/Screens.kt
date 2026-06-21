@@ -34,6 +34,11 @@ import com.example.data.SubtitleRepository
 import com.example.network.GeminiApiClient
 import com.example.utils.SrtParser
 import kotlinx.coroutines.launch
+import androidx.compose.ui.viewinterop.AndroidView
+import android.view.SurfaceView
+import android.view.SurfaceHolder
+import android.media.MediaPlayer
+import android.util.Log
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -505,6 +510,7 @@ fun ReviewerScreen(
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             ActiveMediaPlayerComponent(
+                                viewModel = viewModel,
                                 playerIsPlaying = playerIsPlaying,
                                 playerPosMs = playerPosMs,
                                 playerDurationMs = playerDurationMs,
@@ -597,6 +603,7 @@ fun ReviewerScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             ActiveMediaPlayerComponent(
+                                viewModel = viewModel,
                                 playerIsPlaying = playerIsPlaying,
                                 playerPosMs = playerPosMs,
                                 playerDurationMs = playerDurationMs,
@@ -682,6 +689,7 @@ fun ReviewerScreen(
 
 @Composable
 fun ActiveMediaPlayerComponent(
+    viewModel: SubtitleStudioViewModel,
     playerIsPlaying: Boolean,
     playerPosMs: Long,
     playerDurationMs: Long,
@@ -696,6 +704,53 @@ fun ActiveMediaPlayerComponent(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp))
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val showVideoPlayer by viewModel.showVideoPlayer.collectAsState()
+            val isVideo = isVideoFile(mediaName, null)
+
+            if (showVideoPlayer && isVideo) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .background(Color.Black)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    VideoSurfaceView(
+                        mediaPlayer = viewModel.mediaPlayer,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Subtitle Overlay
+                    val lines by viewModel.srtLines.collectAsState()
+                    val activeIdx by viewModel.activeLineIndex.collectAsState()
+                    val currentLine = lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs } 
+                        ?: lines.getOrNull(activeIdx)
+
+                    if (currentLine != null) {
+                        val subtitleText = currentLine.selectedTranslationText ?: currentLine.nativeText
+                        if (subtitleText.isNotBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
+                                    .background(Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = subtitleText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.Audiotrack, contentDescription = "Audio Track", tint = MaterialTheme.colorScheme.primary)
                 Text(
@@ -1142,6 +1197,42 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Register Configuration")
                 }
+            }
+        }
+
+        Text(
+            text = "General Preferences",
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Show Video Player when Available",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "نمایش ویدیو پلیر هنگام اجرای فایل‌های ویدیویی",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                val showVideoPlayer by viewModel.showVideoPlayer.collectAsState()
+                Switch(
+                    checked = showVideoPlayer,
+                    onCheckedChange = { viewModel.setShowVideoPlayer(it) },
+                    modifier = Modifier.testTag("show_video_player_switch")
+                )
             }
         }
 
@@ -1634,6 +1725,50 @@ fun AiSubtitleScreen(
                         modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        val showVideoPlayer by viewModel.showVideoPlayer.collectAsState()
+                        val isVideo = isVideoFile(aiAudioName ?: "", aiMime)
+                        if (showVideoPlayer && isVideo) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp)
+                                    .background(Color.Black)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                VideoSurfaceView(
+                                    mediaPlayer = viewModel.aiMediaPlayer,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+
+                                // Subtitle Overlay for AI Screen
+                                val currentLine = aiLines.find { aiPlayerPosMs >= it.startTimeMs && aiPlayerPosMs <= it.endTimeMs } 
+                                    ?: aiLines.getOrNull(aiActiveIndex)
+
+                                if (currentLine != null) {
+                                    val subtitleText = currentLine.text
+                                    if (subtitleText.isNotBlank()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
+                                                .background(Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = subtitleText,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1927,6 +2062,48 @@ fun AiSubtitleScreen(
                             }
 
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                            val showVideoPlayer by viewModel.showVideoPlayer.collectAsState()
+                            val isVideo = isVideoFile(tapAudioName ?: "", tapMime)
+                            if (showVideoPlayer && isVideo) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp)
+                                        .background(Color.Black)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    VideoSurfaceView(
+                                        mediaPlayer = viewModel.tapMediaPlayer,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+
+                                    // Subtitle Overlay for Tap Screen (live display of tap subtitles)
+                                    val currentLine = tapSrtLines.find { tapPlayerPosMs >= it.startTimeMs && tapPlayerPosMs <= it.endTimeMs }
+                                    if (currentLine != null) {
+                                        val subtitleText = currentLine.text
+                                        if (subtitleText.isNotBlank()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomCenter)
+                                                    .padding(bottom = 12.dp, start = 12.dp, end = 12.dp)
+                                                    .background(Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                                            ) {
+                                                Text(
+                                                    text = subtitleText,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
 
                             // Row 2: Playback Timeline & Sliders
                             Column(
@@ -2295,3 +2472,56 @@ fun AiSubtitleScreen(
         }
     }
 }
+
+fun isVideoFile(fileName: String?, mimeType: String?): Boolean {
+    if (mimeType?.lowercase()?.startsWith("video/") == true) return true
+    val name = fileName?.lowercase() ?: return false
+    return name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".webm") || 
+           name.endsWith(".avi") || name.endsWith(".mov") || name.endsWith(".3gp") || 
+           name.endsWith(".flv") || name.endsWith(".mpeg") || name.endsWith(".mpg")
+}
+
+@Composable
+fun VideoSurfaceView(
+    mediaPlayer: MediaPlayer?,
+    modifier: Modifier = Modifier
+) {
+    if (mediaPlayer == null) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    // Keep track of active MediaPlayer and its binding to the SurfaceHolder
+    AndroidView(
+        factory = { context ->
+            SurfaceView(context).apply {
+                holder.addCallback(object : SurfaceHolder.Callback {
+                    override fun surfaceCreated(holder: SurfaceHolder) {
+                        try {
+                            mediaPlayer.setDisplay(holder)
+                            // Optional: adjust video scaling if needed
+                            mediaPlayer.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+                        } catch (e: Exception) {
+                            Log.e("VideoSurfaceView", "Error setting display holder", e)
+                        }
+                    }
+
+                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                    }
+
+                    override fun surfaceDestroyed(holder: SurfaceHolder) {
+                        try {
+                            mediaPlayer.setDisplay(null)
+                        } catch (e: Exception) {
+                            Log.e("VideoSurfaceView", "Error removing display holder", e)
+                        }
+                    }
+                })
+            }
+        },
+        modifier = modifier
+    )
+}
+

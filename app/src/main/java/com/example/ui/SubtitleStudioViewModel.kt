@@ -68,7 +68,7 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
     val youtubeLog: StateFlow<String> = _youtubeLog.asStateFlow()
 
     // Media Player state
-    private var mediaPlayer: MediaPlayer? = null
+    var mediaPlayer: MediaPlayer? = null
     private var playerTrackingJob: Job? = null
 
     private val _playerIsPlaying = MutableStateFlow(false)
@@ -145,7 +145,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     val aiActiveLineIndex: StateFlow<Int> = _aiActiveLineIndex.asStateFlow()
 
     // AI Player state
-    private var aiMediaPlayer: MediaPlayer? = null
+    var aiMediaPlayer: MediaPlayer? = null
     private var aiPlayerTrackingJob: Job? = null
 
     private val _aiPlayerIsPlaying = MutableStateFlow(false)
@@ -192,7 +192,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     val tapCurrentRecordingStartMs: StateFlow<Long> = _tapCurrentRecordingStartMs.asStateFlow()
 
     // Tap Media Player state
-    private var tapMediaPlayer: MediaPlayer? = null
+    var tapMediaPlayer: MediaPlayer? = null
     private var tapPlayerTrackingJob: Job? = null
 
     private val _tapPlayerIsPlaying = MutableStateFlow(false)
@@ -210,8 +210,15 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     private val _studioOptionSetting = MutableStateFlow(1)
     val studioOptionSetting: StateFlow<Int> = _studioOptionSetting.asStateFlow()
 
+    private val _showVideoPlayer = MutableStateFlow(true)
+    val showVideoPlayer: StateFlow<Boolean> = _showVideoPlayer.asStateFlow()
+
     init {
         viewModelScope.launch {
+            // Load show video player setting
+            val showVideo = repository.getSettingValue("show_video_player", "true") == "true"
+            _showVideoPlayer.value = showVideo
+
             // Load preferred Language
             val lang = repository.getSettingValue("preferred_language", "ar")
             _preferredLanguage.value = lang
@@ -1696,6 +1703,13 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         _studioOptionSetting.value = option
         viewModelScope.launch {
             repository.saveSetting("studio_option_setting", option.toString())
+        }
+    }
+
+    fun setShowVideoPlayer(show: Boolean) {
+        _showVideoPlayer.value = show
+        viewModelScope.launch {
+            repository.saveSetting("show_video_player", show.toString())
         }
     }
 
