@@ -592,11 +592,13 @@ fun ReviewerScreen(
                     // Mobile Split Vertical Flow - Scrollable Top Form & Fixed Bottom List
                     var listExpanded by remember { mutableStateOf(false) }
                     val mobileScrollState = rememberScrollState()
+                    val timelinesWeightFraction by viewModel.timelinesWeightFraction.collectAsState()
+                    
                     Column(modifier = Modifier.fillMaxSize()) {
                         // Top segment: Player and controls - Scrollable with proportional weight
                         Column(
                             modifier = Modifier
-                                .weight(if (listExpanded) 1.2f else 1.0f)
+                                .weight(if (listExpanded) (2.0f - timelinesWeightFraction).coerceIn(0.2f, 1.8f) else 1.0f)
                                 .fillMaxWidth()
                                 .verticalScroll(mobileScrollState)
                                 .padding(12.dp),
@@ -672,7 +674,7 @@ fun ReviewerScreen(
 
                         // Bottom: List of subtitles
                         if (listExpanded) {
-                            Box(modifier = Modifier.weight(0.8f).fillMaxWidth()) {
+                            Box(modifier = Modifier.weight(timelinesWeightFraction).fillMaxWidth()) {
                                 SubtitleLinesListView(
                                     lines = combinedLines,
                                     activeIdx = activeLineIdx,
@@ -705,13 +707,14 @@ fun ActiveMediaPlayerComponent(
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val showVideoPlayer by viewModel.showVideoPlayer.collectAsState()
+            val videoHeightDp by viewModel.videoHeightDp.collectAsState()
             val isVideo = isVideoFile(mediaName, null)
 
             if (showVideoPlayer && isVideo) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
+                        .height(videoHeightDp.dp)
                         .background(Color.Black)
                         .clip(RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
@@ -803,6 +806,10 @@ fun ActiveMediaPlayerComponent(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            LayoutSizeControls(viewModel = viewModel)
         }
     }
 }
@@ -1477,7 +1484,7 @@ fun AiSubtitleScreen(
             ) {
                 Icon(Icons.Filled.Mic, contentDescription = "AI Option")
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("AI Gemini")
+                Text("Option 1: AI Gemini")
             }
 
             Button(
@@ -1491,7 +1498,7 @@ fun AiSubtitleScreen(
             ) {
                 Icon(Icons.Filled.Segment, contentDescription = "Manual Option")
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Tap-to-Sync")
+                Text("Option 2: Tap-to-Sync")
             }
         }
 
@@ -1690,9 +1697,10 @@ fun AiSubtitleScreen(
             ) {
                 // Top Segment: Player, Change File, and Editing Form (Scrollable to prevent crowding when showing video)
                 val aiScrollState = rememberScrollState()
+                val timelinesWeightFraction by viewModel.timelinesWeightFraction.collectAsState()
                 Column(
                     modifier = Modifier
-                        .weight(1.2f)
+                        .weight((2.0f - timelinesWeightFraction).coerceIn(0.2f, 1.8f))
                         .fillMaxWidth()
                         .verticalScroll(aiScrollState),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1735,12 +1743,13 @@ fun AiSubtitleScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             val showVideoPlayer by viewModel.showVideoPlayer.collectAsState()
+                            val videoHeightDp by viewModel.videoHeightDp.collectAsState()
                             val isVideo = isVideoFile(aiAudioName ?: "", aiMime)
                             if (showVideoPlayer && isVideo) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(200.dp)
+                                        .height(videoHeightDp.dp)
                                         .background(Color.Black)
                                         .clip(RoundedCornerShape(8.dp)),
                                     contentAlignment = Alignment.Center
@@ -1819,6 +1828,11 @@ fun AiSubtitleScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LayoutSizeControls(viewModel = viewModel)
                         }
                     }
 
@@ -1902,7 +1916,7 @@ fun AiSubtitleScreen(
                 // Bottom Segment: Title and Scrollable list of subtitle blocks
                 Column(
                     modifier = Modifier
-                        .weight(0.8f)
+                        .weight(timelinesWeightFraction)
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -2037,9 +2051,10 @@ fun AiSubtitleScreen(
                 ) {
                     // Top Segment: Controls & Deck (Scrollable so it has plenty of space when video is enabled)
                     val tapTopScrollState = rememberScrollState()
+                    val timelinesWeightFraction by viewModel.timelinesWeightFraction.collectAsState()
                     Column(
                         modifier = Modifier
-                            .weight(1.3f)
+                            .weight((2.0f - timelinesWeightFraction).coerceIn(0.2f, 1.8f))
                             .fillMaxWidth()
                             .verticalScroll(tapTopScrollState),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -2090,12 +2105,13 @@ fun AiSubtitleScreen(
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
                                 val showVideoPlayer by viewModel.showVideoPlayer.collectAsState()
+                                val videoHeightDp by viewModel.videoHeightDp.collectAsState()
                                 val isVideo = isVideoFile(tapAudioName ?: "", tapMime)
                                 if (showVideoPlayer && isVideo) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(180.dp)
+                                            .height(videoHeightDp.dp)
                                             .background(Color.Black)
                                             .clip(RoundedCornerShape(8.dp)),
                                         contentAlignment = Alignment.Center
@@ -2248,6 +2264,10 @@ fun AiSubtitleScreen(
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LayoutSizeControls(viewModel = viewModel)
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         // 2. Simple Unified Tapping Control Bar
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -2322,7 +2342,7 @@ fun AiSubtitleScreen(
                     // Bottom Segment: Header and Lines list
                     Column(
                         modifier = Modifier
-                            .weight(0.7f)
+                            .weight(timelinesWeightFraction)
                             .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
@@ -2556,5 +2576,129 @@ fun VideoSurfaceView(
         },
         modifier = modifier
     )
+}
+
+@Composable
+fun LayoutSizeControls(
+    viewModel: SubtitleStudioViewModel,
+    modifier: Modifier = Modifier
+) {
+    val videoHeightDp by viewModel.videoHeightDp.collectAsState()
+    val timelinesWeightFraction by viewModel.timelinesWeightFraction.collectAsState()
+    var isExpanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded }
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = "Resize View",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "ابعاد صفحه و سایز ویدیو / Layout & Video Sizing",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Icon(
+                    imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = "Expand/Collapse"
+                )
+            }
+
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Video Height Control
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ارتفاع ویدیو / Video Height: ${videoHeightDp.toInt()} dp",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            IconButton(
+                                onClick = { viewModel.setVideoHeightDp(videoHeightDp - 20f) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Filled.Remove, contentDescription = "Decrease Video", modifier = Modifier.size(14.dp))
+                            }
+                            IconButton(
+                                onClick = { viewModel.setVideoHeightDp(videoHeightDp + 20f) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = "Increase Video", modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                    Slider(
+                        value = videoHeightDp,
+                        onValueChange = { viewModel.setVideoHeightDp(it) },
+                        valueRange = 80f..400f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Timelines Height / Weight Control
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ارتفاع منوی خطوط زمان / Timelines Weight: ${"%.2f".format(timelinesWeightFraction)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            IconButton(
+                                onClick = { viewModel.setTimelinesWeightFraction(timelinesWeightFraction - 0.1f) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Decrease weight", modifier = Modifier.size(14.dp))
+                            }
+                            IconButton(
+                                onClick = { viewModel.setTimelinesWeightFraction(timelinesWeightFraction + 0.1f) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Increase weight", modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                    Slider(
+                        value = timelinesWeightFraction,
+                        onValueChange = { viewModel.setTimelinesWeightFraction(it) },
+                        valueRange = 0.2f..1.8f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+    }
 }
 

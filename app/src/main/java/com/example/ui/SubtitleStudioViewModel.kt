@@ -89,6 +89,21 @@ class SubtitleStudioViewModel(application: Application) : AndroidViewModel(appli
     private val _isSeeking = MutableStateFlow(false)
     val isSeeking: StateFlow<Boolean> = _isSeeking.asStateFlow()
 
+    // --- Dynamic Sizing and Panel Layout States ---
+    private val _videoHeightDp = MutableStateFlow(200f)
+    val videoHeightDp: StateFlow<Float> = _videoHeightDp.asStateFlow()
+
+    private val _timelinesWeightFraction = MutableStateFlow(0.8f)
+    val timelinesWeightFraction: StateFlow<Float> = _timelinesWeightFraction.asStateFlow()
+
+    fun setVideoHeightDp(height: Float) {
+        _videoHeightDp.value = height.coerceIn(80f, 400f)
+    }
+
+    fun setTimelinesWeightFraction(fraction: Float) {
+        _timelinesWeightFraction.value = fraction.coerceIn(0.2f, 1.8f)
+    }
+
     // --- AI Audio Studio States ---
     private val defaultAiPromptMain = """
 You are an expert subtitle transcriber. Listen to the provided audio file carefully, and transcribe it into a standard SRT subtitle format.
