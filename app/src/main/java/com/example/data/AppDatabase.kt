@@ -10,9 +10,10 @@ import androidx.room.RoomDatabase
         ApiKeyConfig::class,
         ProjectState::class,
         SrtLineState::class,
-        GeneralSetting::class
+        GeneralSetting::class,
+        TapSession::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -20,6 +21,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun projectStateDao(): ProjectStateDao
     abstract fun srtLineStateDao(): SrtLineStateDao
     abstract fun generalSettingDao(): GeneralSettingDao
+    abstract fun tapSessionDao(): TapSessionDao
 
     companion object {
         @Volatile

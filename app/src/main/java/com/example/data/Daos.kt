@@ -71,3 +71,21 @@ interface GeneralSettingDao {
     @Query("SELECT value FROM general_settings WHERE `key` = :key LIMIT 1")
     fun getSettingFlow(key: String): Flow<String?>
 }
+
+@Dao
+interface TapSessionDao {
+    @Query("SELECT * FROM tap_sessions ORDER BY lastActiveTimeMs DESC")
+    fun getAllSessionsFlow(): Flow<List<TapSession>>
+
+    @Query("SELECT * FROM tap_sessions WHERE mediaUri = :mediaUri LIMIT 1")
+    suspend fun getSessionByUri(mediaUri: String): TapSession?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSession(session: TapSession)
+
+    @Query("DELETE FROM tap_sessions WHERE mediaUri = :mediaUri")
+    suspend fun deleteSessionByUri(mediaUri: String)
+
+    @Query("DELETE FROM tap_sessions")
+    suspend fun deleteAllSessions()
+}

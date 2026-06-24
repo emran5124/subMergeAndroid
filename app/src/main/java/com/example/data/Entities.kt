@@ -39,3 +39,14 @@ data class GeneralSetting(
     @PrimaryKey val key: String,
     val value: String
 )
+
+@Entity(tableName = "tap_sessions")
+data class TapSession(
+    @PrimaryKey val mediaUri: String, // Media file URI as key
+    val mediaName: String,
+    val mediaMimeType: String,
+    val txtUri: String = "",
+    val txtName: String = "",
+    val srtLinesJson: String = "",
+    val lastActiveTimeMs: Long = 0
+)

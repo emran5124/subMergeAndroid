@@ -321,4 +321,18 @@ class SubtitleRepository(private val context: Context, private val database: App
             false
         }
     }
+
+    val tapSessionsFlow: Flow<List<TapSession>> = database.tapSessionDao().getAllSessionsFlow()
+
+    suspend fun saveTapSession(session: TapSession) {
+        database.tapSessionDao().insertSession(session)
+    }
+
+    suspend fun getTapSessionByUri(mediaUri: String): TapSession? {
+        return database.tapSessionDao().getSessionByUri(mediaUri)
+    }
+
+    suspend fun deleteTapSession(mediaUri: String) {
+        database.tapSessionDao().deleteSessionByUri(mediaUri)
+    }
 }

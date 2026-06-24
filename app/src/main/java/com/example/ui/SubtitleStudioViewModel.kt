@@ -219,6 +219,9 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     private val _tapPlayerDuration = MutableStateFlow(0L)
     val tapPlayerDuration: StateFlow<Long> = _tapPlayerDuration.asStateFlow()
 
+    val tapSessionsList: StateFlow<List<TapSession>> = repository.tapSessionsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _tapIsSeeking = MutableStateFlow(false)
     val tapIsSeeking: StateFlow<Boolean> = _tapIsSeeking.asStateFlow()
 
@@ -255,6 +258,12 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             if (cachedAudioUriStr.isNotEmpty()) {
                 try {
                     val uri = Uri.parse(cachedAudioUriStr)
+                    try {
+                        val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                    } catch (permEx: Exception) {
+                        Log.e("SubtitleStudioViewModel", "Could not re-take persistable permission for AI audio: $uri", permEx)
+                    }
                     _aiAudioFileUri.value = uri
                     _aiAudioFileName.value = repository.getSettingValue("ai_selected_audio_name", "Selected Audio")
                     val mime = repository.getSettingValue("ai_selected_audio_mime", "audio/*")
@@ -276,6 +285,12 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             if (cachedTapAudioUriStr.isNotEmpty()) {
                 try {
                     val uri = Uri.parse(cachedTapAudioUriStr)
+                    try {
+                        val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                    } catch (permEx: Exception) {
+                        Log.e("SubtitleStudioViewModel", "Could not re-take persistable permission for Tap audio: $uri", permEx)
+                    }
                     _tapAudioFileUri.value = uri
                     _tapAudioFileName.value = repository.getSettingValue("tap_selected_audio_name", "Selected Audio")
                     _tapAudioMimeType.value = repository.getSettingValue("tap_selected_audio_mime", "audio/*")
@@ -295,7 +310,14 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             val cachedTxtUriStr = repository.getSettingValue("tap_txt_file_uri", "")
             if (cachedTxtUriStr.isNotEmpty()) {
                 try {
-                    _tapSourceTxtFileUri.value = Uri.parse(cachedTxtUriStr)
+                    val uri = Uri.parse(cachedTxtUriStr)
+                    try {
+                        val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                    } catch (permEx: Exception) {
+                        Log.e("SubtitleStudioViewModel", "Could not re-take persistable permission for Tap txt: $uri", permEx)
+                    }
+                    _tapSourceTxtFileUri.value = uri
                     _tapSourceTxtFileName.value = repository.getSettingValue("tap_txt_file_name", "Selected TXT")
                     val rawTxtData = repository.getSettingValue("tap_source_txt", "")
                     if (rawTxtData.isNotEmpty()) {
@@ -362,6 +384,13 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     }
 
     fun setAiSelectedAudio(uri: Uri, name: String, mimeType: String) {
+        try {
+            val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to take persistable URI permission for AI audio: $uri", e)
+        }
+
         _aiAudioFileUri.value = uri
         _aiAudioFileName.value = name
         _aiAudioMimeType.value = mimeType
@@ -1191,6 +1220,13 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     // --- Option 2 Tap to Sync Functions ---
 
     fun setTapSelectedAudio(uri: Uri, name: String, mimeType: String) {
+        try {
+            val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to take persistable URI permission for audio: $uri", e)
+        }
+
         _tapAudioFileUri.value = uri
         _tapAudioFileName.value = name
         _tapAudioMimeType.value = mimeType
@@ -1237,7 +1273,115 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                 _tapSrtLines.value = list
                 saveCurrentTapSrtLines()
             }
+            saveCurrentTapSession()
             initializeTapMediaPlayer(uri)
+        }
+    }
+
+    fun saveCurrentTapSession() {
+        val audioUri = _tapAudioFileUri.value ?: return
+        val audioName = _tapAudioFileName.value ?: "Selected Audio"
+        val audioMime = _tapAudioMimeType.value ?: "audio/*"
+        val txtUriStr = _tapSourceTxtFileUri.value?.toString() ?: ""
+        val txtNameStr = _tapSourceTxtFileName.value ?: ""
+        val srtJson = aiLinesToJson(_tapSrtLines.value)
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            val session = TapSession(
+                mediaUri = audioUri.toString(),
+                mediaName = audioName,
+                mediaMimeType = audioMime,
+                txtUri = txtUriStr,
+                txtName = txtNameStr,
+                srtLinesJson = srtJson,
+                lastActiveTimeMs = System.currentTimeMillis()
+            )
+            repository.saveTapSession(session)
+        }
+    }
+
+    fun loadTapSession(session: TapSession) {
+        viewModelScope.launch {
+            try {
+                val uri = Uri.parse(session.mediaUri)
+                val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to take persistable URI permission for media on load", e)
+            }
+
+            if (session.txtUri.isNotEmpty()) {
+                try {
+                    val uri = Uri.parse(session.txtUri)
+                    val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to take persistable URI permission for txt on load", e)
+                }
+            }
+
+            val mediaUri = Uri.parse(session.mediaUri)
+            _tapAudioFileUri.value = mediaUri
+            _tapAudioFileName.value = session.mediaName
+            _tapAudioMimeType.value = session.mediaMimeType
+
+            if (session.txtUri.isNotEmpty()) {
+                _tapSourceTxtFileUri.value = Uri.parse(session.txtUri)
+                _tapSourceTxtFileName.value = session.txtName
+            } else {
+                _tapSourceTxtFileUri.value = null
+                _tapSourceTxtFileName.value = null
+            }
+
+            val srtList = if (session.srtLinesJson.isNotEmpty()) {
+                aiLinesFromJson(session.srtLinesJson)
+            } else {
+                emptyList()
+            }
+            _tapSrtLines.value = srtList
+
+            repository.saveSetting("tap_selected_audio_uri", session.mediaUri)
+            repository.saveSetting("tap_selected_audio_name", session.mediaName)
+            repository.saveSetting("tap_selected_audio_mime", session.mediaMimeType)
+            repository.saveSetting("tap_txt_file_uri", session.txtUri)
+            repository.saveSetting("tap_txt_file_name", session.txtName)
+            repository.saveSetting("tap_is_recording", "false")
+            repository.saveSetting("tap_current_rec_start_ms", "0")
+            _tapActiveLineIndex.value = 0
+            repository.saveSetting("tap_active_line_index", "0")
+
+            val txtLinesStr = if (session.txtUri.isNotEmpty()) {
+                try {
+                    val txtUri = Uri.parse(session.txtUri)
+                    val inputStream = context.contentResolver.openInputStream(txtUri)
+                    val txtContent = inputStream?.use { it.bufferedReader(Charsets.UTF_8).readText() } ?: ""
+                    repository.saveSetting("tap_source_txt", txtContent)
+                    txtContent
+                } catch (e: Exception) {
+                    val reconstructed = srtList.joinToString("\n") { it.text }
+                    repository.saveSetting("tap_source_txt", reconstructed)
+                    reconstructed
+                }
+            } else {
+                val reconstructed = srtList.joinToString("\n") { it.text }
+                repository.saveSetting("tap_source_txt", reconstructed)
+                reconstructed
+            }
+            _tapSourceTxtLines.value = txtLinesStr.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+
+            initializeTapMediaPlayer(mediaUri)
+
+            val updatedSession = session.copy(lastActiveTimeMs = System.currentTimeMillis())
+            repository.saveTapSession(updatedSession)
+        }
+    }
+
+    fun deleteTapSession(session: TapSession) {
+        viewModelScope.launch {
+            repository.deleteTapSession(session.mediaUri)
+            if (_tapAudioFileUri.value?.toString() == session.mediaUri) {
+                clearTapSelectedAudio()
+            }
         }
     }
 
@@ -1541,6 +1685,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         val current = _tapSrtLines.value
         viewModelScope.launch {
             repository.saveSetting("tap_srt_lines_$uriStr", aiLinesToJson(current))
+            saveCurrentTapSession()
         }
     }
 
@@ -1609,6 +1754,13 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     }
 
     fun setTapSourceTxtFile(uri: Uri, name: String) {
+        try {
+            val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to take persistable URI permission for txt: $uri", e)
+        }
+
         _tapSourceTxtFileUri.value = uri
         _tapSourceTxtFileName.value = name
 
@@ -1649,6 +1801,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                         repository.saveSetting("tap_txt_file_uri", uri.toString())
                         repository.saveSetting("tap_txt_file_name", name)
                         repository.saveSetting("tap_source_txt", text)
+                        saveCurrentTapSession()
                     }
                 }
             } catch (e: Exception) {
@@ -1665,6 +1818,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             repository.saveSetting("tap_txt_file_uri", "")
             repository.saveSetting("tap_txt_file_name", "")
             repository.saveSetting("tap_source_txt", "")
+            saveCurrentTapSession()
         }
     }
 
