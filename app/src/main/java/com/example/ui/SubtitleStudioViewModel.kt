@@ -1668,6 +1668,64 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         }
     }
 
+    fun importSrtToTapLines(uri: Uri, mode: Int, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val text = inputStream?.use { it.bufferedReader(Charsets.UTF_8).readText() } ?: ""
+                val importedLines = SrtParser.parse(text)
+                
+                if (importedLines.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        onResult(false, "فایل SRT نامعتبر است یا لاینی ندارد.")
+                    }
+                    return@launch
+                }
+                
+                withContext(Dispatchers.Main) {
+                    if (mode == 1) {
+                        // Mode 1: Sync timings of current lines with imported lines
+                        val currentLines = _tapSrtLines.value.toMutableList()
+                        val updatedLines = mutableListOf<SrtParser.SrtLine>()
+                        
+                        for (i in currentLines.indices) {
+                            val current = currentLines[i]
+                            val imported = importedLines.getOrNull(i)
+                            if (imported != null) {
+                                updatedLines.add(current.copy(
+                                    startTimeMs = imported.startTimeMs,
+                                    endTimeMs = imported.endTimeMs
+                                ))
+                            } else {
+                                updatedLines.add(current)
+                            }
+                        }
+                        
+                        // If current lines list is empty or shorter, we can also add any extra lines from imported with original text if needed.
+                        // But user specifically said "فقط زمان بندی لاین های جدا شده فعلی با فایل srt ورودی هماهنگ میشه"
+                        // So we strictly sync current lines.
+                        _tapSrtLines.value = updatedLines
+                    } else {
+                        // Mode 2: Replace both timings and texts
+                        _tapSrtLines.value = importedLines
+                        
+                        // Also fill tapSourceTxtLines to match the new text so the tapping flow makes sense
+                        val importedTexts = importedLines.map { it.text }
+                        _tapSourceTxtLines.value = importedTexts
+                    }
+                    
+                    saveCurrentTapSrtLines()
+                    onResult(true, "فایل SRT با موفقیت وارد شد.")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to import SRT file", e)
+                withContext(Dispatchers.Main) {
+                    onResult(false, "خطا در بارگذاری فایل SRT: ${e.message}")
+                }
+            }
+        }
+    }
+
     fun addNewTapLinePlaceholder() {
         val list = _tapSrtLines.value.toMutableList()
         val nextIdx = list.size + 1

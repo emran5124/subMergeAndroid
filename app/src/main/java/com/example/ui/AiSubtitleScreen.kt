@@ -150,6 +150,18 @@ fun AiSubtitleScreen(
         }
     }
 
+    var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
+    var showSrtImportDialog by remember { mutableStateOf(false) }
+
+    val srtFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            pendingSrtUri = uri
+            showSrtImportDialog = true
+        }
+    }
+
     val saveSrtLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/plain")
     ) { uri: Uri? ->
@@ -978,7 +990,7 @@ fun AiSubtitleScreen(
                                         )
                                     }
 
-                                    if (tapTxtUri != null) {
+                                                                    if (tapTxtUri != null) {
                                         IconButton(
                                             onClick = { viewModel.clearTapSourceTxtFile() },
                                             modifier = Modifier.size(24.dp)
@@ -998,6 +1010,42 @@ fun AiSubtitleScreen(
                                         ) {
                                             Text("Load text script", fontSize = 10.sp)
                                         }
+                                    }
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                                // Row 1.9: SRT source import
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Subtitles,
+                                            contentDescription = "SRT import",
+                                            tint = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "Sync / Import SRT File",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { srtFileLauncher.launch(arrayOf("*/*")) },
+                                        modifier = Modifier.height(24.dp),
+                                        contentPadding = PaddingValues(horizontal = 6.dp)
+                                    ) {
+                                        Text("Import SRT", fontSize = 10.sp)
                                     }
                                 }
                             }
@@ -1288,6 +1336,101 @@ fun AiSubtitleScreen(
                 }
             }
         }
+    }
+
+    if (showSrtImportDialog && pendingSrtUri != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showSrtImportDialog = false
+                pendingSrtUri = null
+            },
+            title = {
+                Text(
+                    text = "ورود فایل SRT (Import SRT)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Right,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "لطفا یکی از حالت‌های زیر را برای وارد کردن فایل زیرنویس انتخاب کنید:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Right,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Button(
+                        onClick = {
+                            val uri = pendingSrtUri
+                            if (uri != null) {
+                                viewModel.importSrtToTapLines(uri, mode = 1) { success, message ->
+                                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            showSrtImportDialog = false
+                            pendingSrtUri = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    ) {
+                        Text("حالت ۱: هماهنگ‌سازی فقط زمان‌بندی", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    
+                    Text(
+                        text = "توضیح: فقط زمان‌بندی لاین‌های جدا شده فعلی با فایل SRT ورودی هماهنگ می‌شود و متن‌های شما حفظ می‌گردد.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Right,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    
+                    Button(
+                        onClick = {
+                            val uri = pendingSrtUri
+                            if (uri != null) {
+                                viewModel.importSrtToTapLines(uri, mode = 2) { success, message ->
+                                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            showSrtImportDialog = false
+                            pendingSrtUri = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("حالت ۲: جایگزینی کامل (زمان + متن)", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    
+                    Text(
+                        text = "توضیح: تمام لاین‌های فعلی به همراه زمان‌بندی و متن‌ها با اطلاعات فایل SRT ورودی کاملاً جایگزین می‌شوند.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Right,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showSrtImportDialog = false
+                        pendingSrtUri = null
+                    }
+                ) {
+                    Text("انصراف (Cancel)")
+                }
+            }
+        )
     }
 }
 }
