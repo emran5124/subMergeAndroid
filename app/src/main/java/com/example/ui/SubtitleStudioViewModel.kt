@@ -1624,35 +1624,25 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                     _tapSourceTxtLines.value = lines
                     
                     val srtList = _tapSrtLines.value.toMutableList()
-                    val isPlaceholderOnly = srtList.isEmpty() || srtList.all { it.text == it.index.toString() || (it.startTimeMs == 0L && it.endTimeMs == 0L) }
+                    val newSrtList = mutableListOf<SrtParser.SrtLine>()
+                    val maxCount = maxOf(srtList.size, lines.size)
                     
-                    if (isPlaceholderOnly) {
-                        srtList.clear()
-                        for ((idx, txt) in lines.withIndex()) {
-                            srtList.add(SrtParser.SrtLine(
-                                index = idx + 1,
+                    for (i in 0 until maxCount) {
+                        val existingLine = srtList.getOrNull(i)
+                        if (existingLine != null) {
+                            val textToUse = lines.getOrNull(i) ?: existingLine.text
+                            newSrtList.add(existingLine.copy(text = textToUse))
+                        } else {
+                            val textToUse = lines.getOrNull(i) ?: "${i + 1}"
+                            newSrtList.add(SrtParser.SrtLine(
+                                index = i + 1,
                                 startTimeMs = 0L,
                                 endTimeMs = 0L,
-                                text = txt
+                                text = textToUse
                             ))
                         }
-                    } else {
-                        // Merge text onto existing list
-                        for (i in 0 until maxOf(srtList.size, lines.size)) {
-                            val txt = lines.getOrNull(i) ?: "${i + 1}"
-                            if (i < srtList.size) {
-                                srtList[i] = srtList[i].copy(text = txt)
-                            } else {
-                                srtList.add(SrtParser.SrtLine(
-                                    index = i + 1,
-                                    startTimeMs = 0L,
-                                    endTimeMs = 0L,
-                                    text = txt
-                                ))
-                            }
-                        }
                     }
-                    _tapSrtLines.value = srtList
+                    _tapSrtLines.value = newSrtList
                     saveCurrentTapSrtLines()
 
                     viewModelScope.launch {
