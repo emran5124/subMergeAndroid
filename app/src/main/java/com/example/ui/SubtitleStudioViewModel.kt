@@ -644,6 +644,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                         try {
                             player.pause()
                             if (_precisePlaybackStop.value) {
+                                player.setOnSeekCompleteListener(null)
                                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                     player.seekTo(stopTimeMs, MediaPlayer.SEEK_CLOSEST)
                                 } else {
@@ -1118,6 +1119,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                         try {
                             player.pause()
                             if (_precisePlaybackStop.value) {
+                                player.setOnSeekCompleteListener(null)
                                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                     player.seekTo(stopTimeMs, MediaPlayer.SEEK_CLOSEST)
                                 } else {
@@ -1646,6 +1648,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                         try {
                             player.pause()
                             if (_precisePlaybackStop.value) {
+                                player.setOnSeekCompleteListener(null)
                                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                     player.seekTo(stopTimeMs, MediaPlayer.SEEK_CLOSEST)
                                 } else {

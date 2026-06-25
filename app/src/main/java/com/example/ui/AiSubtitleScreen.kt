@@ -164,7 +164,7 @@ fun AiSubtitleScreen(
     }
 
     val saveSrtLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/plain")
+        contract = ActivityResultContracts.CreateDocument("*/*")
     ) { uri: Uri? ->
         if (uri != null) {
             val success = viewModel.writeTapSrtToUri(context, uri)
