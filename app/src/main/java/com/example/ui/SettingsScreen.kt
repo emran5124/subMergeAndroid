@@ -161,6 +161,36 @@ fun SettingsScreen(
             }
         }
 
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Precise Playback Stop",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "توقف دقیق پخش تک لاین در ثانیه پایانی (در صورت غیرفعال بودن، توقف استاندارد قبلی انجام می‌شود)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                val precisePlaybackStop by viewModel.precisePlaybackStop.collectAsState()
+                Switch(
+                    checked = precisePlaybackStop,
+                    onCheckedChange = { viewModel.setPrecisePlaybackStop(it) },
+                    modifier = Modifier.testTag("precise_playback_stop_switch")
+                )
+            }
+        }
+
         Text(
             text = "Configured API Keys (Ordered by Priority):",
             style = MaterialTheme.typography.titleMedium,

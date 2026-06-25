@@ -231,11 +231,18 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     private val _showVideoPlayer = MutableStateFlow(true)
     val showVideoPlayer: StateFlow<Boolean> = _showVideoPlayer.asStateFlow()
 
+    private val _precisePlaybackStop = MutableStateFlow(true)
+    val precisePlaybackStop: StateFlow<Boolean> = _precisePlaybackStop.asStateFlow()
+
     init {
         viewModelScope.launch {
             // Load show video player setting
             val showVideo = repository.getSettingValue("show_video_player", "true") == "true"
             _showVideoPlayer.value = showVideo
+
+            // Load precise playback stop setting
+            val preciseStop = repository.getSettingValue("precise_playback_stop", "true") == "true"
+            _precisePlaybackStop.value = preciseStop
 
             // Load preferred Language
             val lang = repository.getSettingValue("preferred_language", "ar")
@@ -634,7 +641,16 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                     _aiPlayerCurrentPosMs.value = finalPos
 
                     if (stopTimeMs != null && finalPos >= stopTimeMs) {
-                        player.pause()
+                        try {
+                            player.pause()
+                            if (_precisePlaybackStop.value) {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                    player.seekTo(stopTimeMs, MediaPlayer.SEEK_CLOSEST)
+                                } else {
+                                    player.seekTo(stopTimeMs.toInt())
+                                }
+                            }
+                        } catch (e: Exception) {}
                         _aiPlayerIsPlaying.value = false
                         _aiPlayerCurrentPosMs.value = stopTimeMs
                         break
@@ -1099,7 +1115,16 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                     val pos = kotlin.math.max(estimatedPos, actualPos)
 
                     if (stopTimeMs != null && pos >= stopTimeMs) {
-                        player.pause()
+                        try {
+                            player.pause()
+                            if (_precisePlaybackStop.value) {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                    player.seekTo(stopTimeMs, MediaPlayer.SEEK_CLOSEST)
+                                } else {
+                                    player.seekTo(stopTimeMs.toInt())
+                                }
+                            }
+                        } catch (e: Exception) {}
                         _playerIsPlaying.value = false
                         _playerCurrentPosMs.value = stopTimeMs
                         break
@@ -1620,13 +1645,23 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                     if (stopTimeMs != null && stopTimeMs > 0 && finalPos >= stopTimeMs) {
                         try {
                             player.pause()
+                            if (_precisePlaybackStop.value) {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                    player.seekTo(stopTimeMs, MediaPlayer.SEEK_CLOSEST)
+                                } else {
+                                    player.seekTo(stopTimeMs.toInt())
+                                }
+                            }
                         } catch (e: Exception) {}
                         _tapPlayerIsPlaying.value = false
+                        _tapPlayerCurrentPosMs.value = stopTimeMs
                         stopTapPlayerTracking()
                         break
                     }
                     
-                    matchTapActiveLineWithTime(finalPos)
+                    if (stopTimeMs == null || stopTimeMs <= 0) {
+                        matchTapActiveLineWithTime(finalPos)
+                    }
                 }
                 delay(16)
             }
@@ -2077,6 +2112,13 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         _showVideoPlayer.value = show
         viewModelScope.launch {
             repository.saveSetting("show_video_player", show.toString())
+        }
+    }
+
+    fun setPrecisePlaybackStop(enabled: Boolean) {
+        _precisePlaybackStop.value = enabled
+        viewModelScope.launch {
+            repository.saveSetting("precise_playback_stop", enabled.toString())
         }
     }
 
