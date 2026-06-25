@@ -672,3 +672,218 @@ fun LayoutSizeControls(
         }
     }
 }
+
+@Composable
+fun ReviewerActiveMediaPlayerComponent(
+    viewModel: ReviewerViewModel,
+    playerIsPlaying: Boolean,
+    playerPosMs: Long,
+    playerDurationMs: Long,
+    autoPlay: Boolean,
+    mediaName: String,
+    onTogglePlay: () -> Unit,
+    onPlaySegment: () -> Unit,
+    onToggleAutoPlay: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val showVideoPlayer = true
+            val videoHeightDp = 200f
+            val isVideo = isVideoFile(mediaName, null)
+
+            if (showVideoPlayer && isVideo) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(videoHeightDp.dp)
+                        .background(Color.Black)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    ZoomableVideoBox(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        VideoSurfaceView(
+                            mediaPlayer = viewModel.mediaPlayer,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+
+                    // Subtitle Overlay
+                    val lines by viewModel.srtLines.collectAsState()
+                    val activeIdx by viewModel.activeLineIndex.collectAsState()
+                    val currentLine = lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs } 
+                        ?: lines.getOrNull(activeIdx)
+
+                    if (currentLine != null) {
+                        val subtitleText = currentLine.selectedTranslationText ?: currentLine.nativeText
+                        if (subtitleText.isNotBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
+                                    .background(Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = subtitleText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Filled.Audiotrack, contentDescription = "Audio Track", tint = MaterialTheme.colorScheme.primary)
+                Text(
+                     text = mediaName,
+                     style = MaterialTheme.typography.bodyMedium,
+                     fontWeight = FontWeight.Bold,
+                     maxLines = 1
+                )
+            }
+
+            // Simple progress row
+            LinearProgressIndicator(
+                progress = {
+                    if (playerDurationMs > 0) playerPosMs.toFloat() / playerDurationMs.toFloat() else 0f
+                },
+                modifier = Modifier.fillMaxWidth().height(6.dp)
+            )
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(text = SrtParser.formatTime(playerPosMs), style = MaterialTheme.typography.bodySmall)
+                Text(text = SrtParser.formatTime(playerDurationMs), style = MaterialTheme.typography.bodySmall)
+            }
+
+            // Controllers
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // AutoPlay Switch
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Checkbox(checked = autoPlay, onCheckedChange = { onToggleAutoPlay(it) })
+                    Text(text = "Auto Play", style = MaterialTheme.typography.bodySmall)
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Play segment
+                    OutlinedButton(onClick = onPlaySegment) {
+                        Icon(Icons.Filled.Segment, contentDescription = "Play segment")
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Segment", fontSize = 11.sp)
+                    }
+
+                    // Toggle Play / Pause
+                    Button(onClick = onTogglePlay, modifier = Modifier.size(height = 40.dp, width = 96.dp)) {
+                        Icon(
+                            if (playerIsPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = "Play pause"
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ReviewerLayoutSizeControls(viewModel = viewModel)
+        }
+    }
+}
+
+@Composable
+fun ReviewerLayoutSizeControls(
+    viewModel: ReviewerViewModel,
+    modifier: Modifier = Modifier
+) {
+    val timelinesWeightFraction by viewModel.timelinesWeightFraction.collectAsState()
+    var isExpanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded }
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = "Resize View",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "ابعاد صفحه / Layout Sizing",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Icon(
+                    imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = "Expand/Collapse"
+                )
+            }
+
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Timelines Height / Weight Control
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ارتفاع منوی خطوط زمان / Timelines Weight: ${"%.2f".format(timelinesWeightFraction)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            IconButton(
+                                onClick = { viewModel.setTimelinesWeightFraction(timelinesWeightFraction - 0.1f) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Decrease weight", modifier = Modifier.size(14.dp))
+                            }
+                            IconButton(
+                                onClick = { viewModel.setTimelinesWeightFraction(timelinesWeightFraction + 0.1f) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Increase weight", modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                    Slider(
+                        value = timelinesWeightFraction,
+                        onValueChange = { viewModel.setTimelinesWeightFraction(it) },
+                        valueRange = 0.2f..1.8f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+    }
+}

@@ -45,6 +45,10 @@ class SubtitleRepository(private val context: Context, private val database: App
         database.srtLineStateDao().deleteLineStatesForProject(folderUri)
     }
 
+    suspend fun clearSrtLineStates(folderUri: String) {
+        database.srtLineStateDao().deleteLineStatesForProject(folderUri)
+    }
+
     suspend fun getProjectByUri(folderUri: String): ProjectState? {
         return database.projectStateDao().getProjectByUri(folderUri)
     }
@@ -175,27 +179,6 @@ class SubtitleRepository(private val context: Context, private val database: App
                     alternatives = alternatives
                 )
             )
-
-            // If there was no cached entry, let's pre-populate the DB for this line so everything is fully state-saved
-            if (cached == null) {
-                val dbId = "${projectUniqueKey}_${line.index}"
-                initialDbInserts.add(
-                    SrtLineState(
-                        id = dbId,
-                        folderUri = projectUniqueKey,
-                        lineIndex = line.index,
-                        startTimeMs = line.startTimeMs,
-                        endTimeMs = line.endTimeMs,
-                        editedNativeText = null,
-                        selectedTranslationFileName = null,
-                        editedTranslationText = null
-                    )
-                )
-            }
-        }
-
-        if (initialDbInserts.isNotEmpty()) {
-            database.srtLineStateDao().insertLineStates(initialDbInserts)
         }
 
         return combined

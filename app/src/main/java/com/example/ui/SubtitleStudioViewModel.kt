@@ -248,13 +248,6 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             val lang = repository.getSettingValue("preferred_language", "ar")
             _preferredLanguage.value = lang
 
-            // Load last active folder tree
-            val lastFolder = repository.getSettingValue("last_folder_tree_uri", "")
-            if (lastFolder.isNotEmpty()) {
-                _activeProjectFolderUri.value = lastFolder
-                scanTreeForSubdirs(lastFolder)
-            }
-
             // Load AI Transcriber Settings
             val cachedPrompt = repository.getSettingValue("ai_custom_prompt", "")
             _aiCustomPrompt.value = if (cachedPrompt.isEmpty()) defaultAiPromptMain else cachedPrompt

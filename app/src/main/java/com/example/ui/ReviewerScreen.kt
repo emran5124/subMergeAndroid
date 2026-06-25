@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.sp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReviewerScreen(
-    viewModel: SubtitleStudioViewModel,
+    viewModel: ReviewerViewModel,
     modifier: Modifier = Modifier
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -78,6 +78,14 @@ fun ReviewerScreen(
                 actions = {
                     var trFileNameToExport by remember { mutableStateOf<String?>(null) }
                     
+                    if (activeSubpId != null) {
+                        IconButton(onClick = {
+                            viewModel.clearProjectCache()
+                        }) {
+                            Icon(Icons.Filled.Sync, contentDescription = "Sync / Reload from files")
+                        }
+                    }
+
                     if (combinedLines.isNotEmpty()) {
                         IconButton(onClick = {
                             viewModel.exportOutputSrt { fileName ->
@@ -169,16 +177,33 @@ fun ReviewerScreen(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Workspace: Selected",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                        OutlinedButton(onClick = { directoryPicker.launch(null) }) {
-                            Text("Change Workspace")
+                        OutlinedButton(
+                            onClick = { viewModel.refreshActiveMainFolder() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Refresh")
+                        }
+                        OutlinedButton(
+                            onClick = { directoryPicker.launch(null) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Filled.Folder, contentDescription = "Change")
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Change")
+                        }
+                        Button(
+                            onClick = { viewModel.clearActiveMainFolder() },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Filled.Close, contentDescription = "Close")
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Close")
                         }
                     }
 
@@ -237,7 +262,7 @@ fun ReviewerScreen(
                                 .padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            ActiveMediaPlayerComponent(
+                            ReviewerActiveMediaPlayerComponent(
                                 viewModel = viewModel,
                                 playerIsPlaying = playerIsPlaying,
                                 playerPosMs = playerPosMs,
@@ -332,7 +357,7 @@ fun ReviewerScreen(
                                 .padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            ActiveMediaPlayerComponent(
+                            ReviewerActiveMediaPlayerComponent(
                                 viewModel = viewModel,
                                 playerIsPlaying = playerIsPlaying,
                                 playerPosMs = playerPosMs,

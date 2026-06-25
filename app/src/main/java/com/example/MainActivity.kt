@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import com.example.ui.ReviewerScreen
 import com.example.ui.SettingsScreen
+import com.example.ui.ReviewerViewModel
 import com.example.ui.SubtitleStudioViewModel
 import com.example.ui.YoutubeExtractorScreen
 import com.example.ui.AiSubtitleScreen
@@ -24,6 +25,7 @@ import com.example.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
     private val viewModel: SubtitleStudioViewModel by viewModels()
+    private val reviewerViewModel: ReviewerViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,7 +72,7 @@ class MainActivity : ComponentActivity() {
                     val bottomPaddingModifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
                     when (selectedTab) {
                         0 -> YoutubeExtractorScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
-                        1 -> ReviewerScreen(viewModel = viewModel, modifier = bottomPaddingModifier)
+                        1 -> ReviewerScreen(viewModel = reviewerViewModel, modifier = bottomPaddingModifier)
                         2 -> AiSubtitleScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
                         3 -> SettingsScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
                     }
