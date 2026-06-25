@@ -586,7 +586,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                 player.start()
             }
             _aiPlayerIsPlaying.value = true
-            startAiPlayerTracking(stopTimeMs = line.endTimeMs, initialPosOverride = line.startTimeMs)
+            startAiPlayerTracking(stopTimeMs = line.endTimeMs, initialPosOverride = line.startTimeMs, isSingleLine = true)
         }
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -610,7 +610,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             _aiIsSeeking.value = false
             _aiPlayerCurrentPosMs.value = line.startTimeMs
             if (player.isPlaying) {
-                startAiPlayerTracking(stopTimeMs = line.endTimeMs, initialPosOverride = line.startTimeMs)
+                startAiPlayerTracking(stopTimeMs = line.endTimeMs, initialPosOverride = line.startTimeMs, isSingleLine = true)
             } else {
                 _aiPlayerIsPlaying.value = false
             }
@@ -623,7 +623,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         }
     }
 
-    private fun startAiPlayerTracking(stopTimeMs: Long? = null, initialPosOverride: Long? = null) {
+    private fun startAiPlayerTracking(stopTimeMs: Long? = null, initialPosOverride: Long? = null, isSingleLine: Boolean = false) {
         stopAiPlayerTracking()
         aiPlayerTrackingJob = viewModelScope.launch(Dispatchers.Main) {
             val startTime = java.lang.System.currentTimeMillis()
@@ -656,7 +656,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                         break
                     }
                     
-                    if (stopTimeMs == null) {
+                    if (!isSingleLine && stopTimeMs == null) {
                         matchAiActiveLineWithTime(finalPos)
                     }
                 }
@@ -1625,7 +1625,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         _tapPlayerDuration.value = 0L
     }
 
-    private fun startTapPlayerTracking(stopTimeMs: Long? = null) {
+    private fun startTapPlayerTracking(stopTimeMs: Long? = null, isSingleLine: Boolean = false) {
         stopTapPlayerTracking()
         tapPlayerTrackingJob = viewModelScope.launch(Dispatchers.Main) {
             val startTime = java.lang.System.currentTimeMillis()
@@ -1659,7 +1659,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                         break
                     }
                     
-                    if (stopTimeMs == null || stopTimeMs <= 0) {
+                    if (!isSingleLine && (stopTimeMs == null || stopTimeMs <= 0)) {
                         matchTapActiveLineWithTime(finalPos)
                     }
                 }
@@ -1928,7 +1928,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             _tapPlayerIsPlaying.value = true
             
             val stopAt = if (line.endTimeMs > line.startTimeMs) line.endTimeMs else null
-            startTapPlayerTracking(stopTimeMs = stopAt)
+            startTapPlayerTracking(stopTimeMs = stopAt, isSingleLine = true)
         }
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
