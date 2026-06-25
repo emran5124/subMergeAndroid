@@ -12,35 +12,83 @@ object SrtParser {
 
     fun parse(content: String): List<SrtLine> {
         val lines = mutableListOf<SrtLine>()
-        // Normalize line breaks
-        val normalized = content.replace("\r\n", "\n").replace("\r", "\n")
-        val blocks = normalized.split("\n\n")
-
+        val rawLines = content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
         val timePattern = Pattern.compile("(\\d+):(\\d+):(\\d+)[,\\.](\\d+)")
-
-        for (block in blocks) {
-            val sBlock = block.trim()
-            if (sBlock.isEmpty()) continue
-
-            val blockLines = sBlock.split("\n")
-            if (blockLines.size < 2) continue
-
-            val indexStr = blockLines[0].trim().filter { it.isDigit() }
-            val index = indexStr.toIntOrNull() ?: continue
-
-            val timeLine = blockLines[1].trim()
-            val timeParts = timeLine.split("-->")
-            if (timeParts.size != 2) continue
-
-            val startTimeMs = parseTimestamp(timeParts[0].trim(), timePattern) ?: continue
-            val endTimeMs = parseTimestamp(timeParts[1].trim(), timePattern) ?: continue
-
-            val subtitleText = blockLines.drop(2).joinToString("\n").trim()
-
-            lines.add(SrtLine(index, startTimeMs, endTimeMs, subtitleText))
+        
+        var i = 0
+        while (i < rawLines.size) {
+            val line = rawLines[i].trim()
+            if (line.isEmpty()) {
+                i++
+                continue
+            }
+            
+            var index: Int? = null
+            var startTimeMs: Long? = null
+            var endTimeMs: Long? = null
+            
+            if (line.contains("-->")) {
+                val parts = line.split("-->")
+                if (parts.size == 2) {
+                    startTimeMs = parseTimestamp(parts[0].trim(), timePattern)
+                    endTimeMs = parseTimestamp(parts[1].trim(), timePattern)
+                }
+            } else {
+                val nextIndex = findNextNonEmptyLineIndex(rawLines, i + 1)
+                if (nextIndex != -1 && rawLines[nextIndex].contains("-->")) {
+                    val possibleIndexStr = line.filter { it.isDigit() }
+                    index = possibleIndexStr.toIntOrNull()
+                    
+                    val timeLine = rawLines[nextIndex].trim()
+                    val parts = timeLine.split("-->")
+                    if (parts.size == 2) {
+                        startTimeMs = parseTimestamp(parts[0].trim(), timePattern)
+                        endTimeMs = parseTimestamp(parts[1].trim(), timePattern)
+                    }
+                    i = nextIndex
+                }
+            }
+            
+            if (startTimeMs != null && endTimeMs != null) {
+                i++
+                val textLines = mutableListOf<String>()
+                while (i < rawLines.size) {
+                    val nextLine = rawLines[i].trim()
+                    if (nextLine.isEmpty()) {
+                        break
+                    }
+                    
+                    if (nextLine.all { it.isDigit() }) {
+                        val aheadIdx = findNextNonEmptyLineIndex(rawLines, i + 1)
+                        if (aheadIdx != -1 && rawLines[aheadIdx].contains("-->")) {
+                            break
+                        }
+                    } else if (nextLine.contains("-->")) {
+                        break
+                    }
+                    
+                    textLines.add(rawLines[i])
+                    i++
+                }
+                
+                val finalIndex = index ?: (lines.size + 1)
+                val subtitleText = textLines.joinToString("\n").trim()
+                lines.add(SrtLine(finalIndex, startTimeMs, endTimeMs, subtitleText))
+            } else {
+                i++
+            }
         }
-
+        
         return lines
+    }
+
+    private fun findNextNonEmptyLineIndex(rawLines: List<String>, startIndex: Int): Int {
+        for (idx in startIndex until rawLines.size) {
+            if (rawLines[idx].trim().isNotEmpty()) {
+                return idx
+            }
+        }
+        return -1
     }
 
     fun parseTimestamp(timestamp: String, pattern: Pattern): Long? {
