@@ -283,49 +283,58 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             // Load Tap Subtitle Settings for Option 2
             val cachedTapAudioUriStr = repository.getSettingValue("tap_selected_audio_uri", "")
             if (cachedTapAudioUriStr.isNotEmpty()) {
-                try {
-                    val uri = Uri.parse(cachedTapAudioUriStr)
+                val dbSession = repository.getTapSessionByUri(cachedTapAudioUriStr)
+                if (dbSession != null) {
+                    loadTapSession(dbSession)
+                } else {
                     try {
-                        val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        context.contentResolver.takePersistableUriPermission(uri, takeFlags)
-                    } catch (permEx: Exception) {
-                        Log.e("SubtitleStudioViewModel", "Could not re-take persistable permission for Tap audio: $uri", permEx)
-                    }
-                    _tapAudioFileUri.value = uri
-                    _tapAudioFileName.value = repository.getSettingValue("tap_selected_audio_name", "Selected Audio")
-                    _tapAudioMimeType.value = repository.getSettingValue("tap_selected_audio_mime", "audio/*")
+                        val uri = Uri.parse(cachedTapAudioUriStr)
+                        try {
+                            val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                        } catch (permEx: Exception) {
+                            Log.e("SubtitleStudioViewModel", "Could not re-take permission", permEx)
+                        }
+                        _tapAudioFileUri.value = uri
+                        _tapAudioFileName.value = repository.getSettingValue("tap_selected_audio_name", "Selected Audio")
+                        _tapAudioMimeType.value = repository.getSettingValue("tap_selected_audio_mime", "audio/*")
 
-                    // Load SRT lines for option 2
-                    val linesJson = repository.getSettingValue("tap_srt_lines_$cachedTapAudioUriStr", "")
-                    if (linesJson.isNotEmpty()) {
-                        _tapSrtLines.value = aiLinesFromJson(linesJson)
-                    }
+                        val linesJson = repository.getSettingValue("tap_srt_lines_$cachedTapAudioUriStr", "")
+                        if (linesJson.isNotEmpty()) {
+                            _tapSrtLines.value = aiLinesFromJson(linesJson)
+                        }
 
-                    initializeTapMediaPlayer(uri)
-                } catch (e: Exception) {
-                    Log.e("SubtitleStudioViewModel", "Error loading cached Tap audio settings", e)
+                        initializeTapMediaPlayer(uri)
+
+                        val cachedTxtUriStr = repository.getSettingValue("tap_txt_file_uri", "")
+                        if (cachedTxtUriStr.isNotEmpty()) {
+                            try {
+                                val txtUri = Uri.parse(cachedTxtUriStr)
+                                try {
+                                    val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    context.contentResolver.takePersistableUriPermission(txtUri, takeFlags)
+                                } catch (permEx: Exception) {
+                                    Log.e("SubtitleStudioViewModel", "Could not re-take txt permission", permEx)
+                                }
+                                _tapSourceTxtFileUri.value = txtUri
+                                _tapSourceTxtFileName.value = repository.getSettingValue("tap_txt_file_name", "Selected TXT")
+                                val rawTxtData = repository.getSettingValue("tap_source_txt", "")
+                                if (rawTxtData.isNotEmpty()) {
+                                    _tapSourceTxtLines.value = rawTxtData.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                                }
+                            } catch (e: Exception) {
+                                Log.e("SubtitleStudioViewModel", "Error loading cached Txt settings", e)
+                            }
+                        }
+                        saveCurrentTapSession()
+                    } catch (e: Exception) {
+                        Log.e("SubtitleStudioViewModel", "Error loading cached Tap audio settings", e)
+                    }
                 }
-            }
-
-            val cachedTxtUriStr = repository.getSettingValue("tap_txt_file_uri", "")
-            if (cachedTxtUriStr.isNotEmpty()) {
-                try {
-                    val uri = Uri.parse(cachedTxtUriStr)
-                    try {
-                        val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        context.contentResolver.takePersistableUriPermission(uri, takeFlags)
-                    } catch (permEx: Exception) {
-                        Log.e("SubtitleStudioViewModel", "Could not re-take persistable permission for Tap txt: $uri", permEx)
-                    }
-                    _tapSourceTxtFileUri.value = uri
-                    _tapSourceTxtFileName.value = repository.getSettingValue("tap_txt_file_name", "Selected TXT")
-                    val rawTxtData = repository.getSettingValue("tap_source_txt", "")
-                    if (rawTxtData.isNotEmpty()) {
-                        _tapSourceTxtLines.value = rawTxtData.split("\n")
-                    }
-                } catch (e: Exception) {
-                    Log.e("SubtitleStudioViewModel", "Error loading cached Txt settings", e)
-                }
+            } else {
+                _tapSourceTxtFileUri.value = null
+                _tapSourceTxtFileName.value = null
+                _tapSourceTxtLines.value = emptyList()
             }
 
             _tapIsRecording.value = repository.getSettingValue("tap_is_recording", "false") == "true"
@@ -1235,6 +1244,11 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         _tapIsRecording.value = false
         _tapCurrentRecordingStartMs.value = 0L
 
+        // Clear TXT file state on new media select to prevent overlap/interference
+        _tapSourceTxtFileUri.value = null
+        _tapSourceTxtFileName.value = null
+        _tapSourceTxtLines.value = emptyList()
+
         viewModelScope.launch {
             repository.saveSetting("tap_selected_audio_uri", uri.toString())
             repository.saveSetting("tap_selected_audio_name", name)
@@ -1242,33 +1256,24 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             repository.saveSetting("tap_is_recording", "false")
             repository.saveSetting("tap_current_rec_start_ms", "0")
             repository.saveSetting("tap_active_line_index", "0")
+            repository.saveSetting("tap_txt_file_uri", "")
+            repository.saveSetting("tap_txt_file_name", "")
+            repository.saveSetting("tap_source_txt", "")
 
             // Try loading cached subtitles for this specific URI
             val cachedJson = repository.getSettingValue("tap_srt_lines_$uri", "")
             if (cachedJson.isNotEmpty()) {
                 _tapSrtLines.value = aiLinesFromJson(cachedJson)
             } else {
-                // Pre-populate with either source TXT lines or 10 default lines
-                val txtLines = _tapSourceTxtLines.value
+                // Since _tapSourceTxtLines is cleared, this will correctly populate with default 10 lines
                 val list = mutableListOf<SrtParser.SrtLine>()
-                if (txtLines.isNotEmpty()) {
-                    for ((idx, text) in txtLines.withIndex()) {
-                        list.add(SrtParser.SrtLine(
-                            index = idx + 1,
-                            startTimeMs = 0L,
-                            endTimeMs = 0L,
-                            text = text
-                        ))
-                    }
-                } else {
-                    for (i in 1..10) {
-                        list.add(SrtParser.SrtLine(
-                            index = i,
-                            startTimeMs = 0L,
-                            endTimeMs = 0L,
-                            text = "$i"
-                        ))
-                    }
+                for (i in 1..10) {
+                    list.add(SrtParser.SrtLine(
+                        index = i,
+                        startTimeMs = 0L,
+                        endTimeMs = 0L,
+                        text = "$i"
+                    ))
                 }
                 _tapSrtLines.value = list
                 saveCurrentTapSrtLines()
@@ -1297,6 +1302,139 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                 lastActiveTimeMs = System.currentTimeMillis()
             )
             repository.saveTapSession(session)
+            backupSessionsToDownloadFolder()
+        }
+    }
+
+    fun backupSessionsToDownloadFolder() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val backupDir = java.io.File(downloadsDir, ".logs-sub")
+                if (!backupDir.exists()) {
+                    backupDir.mkdirs()
+                }
+
+                // 1. Save all sessions as a combined JSON
+                val sessions = repository.tapSessionsFlow.firstOrNull() ?: emptyList()
+                val sessionsJsonArray = org.json.JSONArray()
+                for (session in sessions) {
+                    val obj = org.json.JSONObject()
+                    obj.put("mediaUri", session.mediaUri)
+                    obj.put("mediaName", session.mediaName)
+                    obj.put("mediaMimeType", session.mediaMimeType)
+                    obj.put("txtUri", session.txtUri)
+                    obj.put("txtName", session.txtName)
+                    obj.put("srtLinesJson", session.srtLinesJson)
+                    obj.put("lastActiveTimeMs", session.lastActiveTimeMs)
+                    sessionsJsonArray.put(obj)
+                }
+                val mainBackupFile = java.io.File(backupDir, "sessions_metadata_backup.json")
+                mainBackupFile.writeText(sessionsJsonArray.toString(4), Charsets.UTF_8)
+
+                // 2. Save individual SRT files and JSON files for each session so they are safe!
+                for (session in sessions) {
+                    val safeMediaName = session.mediaName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                    
+                    // Save JSON backup
+                    val sessionJsonFile = java.io.File(backupDir, "${safeMediaName}_backup.json")
+                    val sessionObj = org.json.JSONObject()
+                    sessionObj.put("mediaUri", session.mediaUri)
+                    sessionObj.put("mediaName", session.mediaName)
+                    sessionObj.put("mediaMimeType", session.mediaMimeType)
+                    sessionObj.put("txtUri", session.txtUri)
+                    sessionObj.put("txtName", session.txtName)
+                    sessionObj.put("srtLinesJson", session.srtLinesJson)
+                    sessionObj.put("lastActiveTimeMs", session.lastActiveTimeMs)
+                    sessionJsonFile.writeText(sessionObj.toString(4), Charsets.UTF_8)
+
+                    // Save SRT backup
+                    val srtList = aiLinesFromJson(session.srtLinesJson)
+                    if (srtList.isNotEmpty()) {
+                        val srtContent = buildSrtString(srtList)
+                        val srtFile = java.io.File(backupDir, "${safeMediaName}_backup.srt")
+                        srtFile.writeText(srtContent, Charsets.UTF_8)
+                    }
+                }
+                Log.d("SubtitleStudioViewModel", "Backup successfully saved to Download/.logs-sub")
+            } catch (e: Exception) {
+                Log.e("SubtitleStudioViewModel", "Failed to backup sessions to Download folder", e)
+            }
+        }
+    }
+
+    private fun buildSrtString(lines: List<SrtParser.SrtLine>): String {
+        val sb = StringBuilder()
+        for (line in lines) {
+            sb.append(line.index).append("\n")
+            sb.append(formatTimeMsToSrt(line.startTimeMs))
+                .append(" --> ")
+                .append(formatTimeMsToSrt(line.endTimeMs))
+                .append("\n")
+            sb.append(line.text).append("\n\n")
+        }
+        return sb.toString()
+    }
+
+    private fun formatTimeMsToSrt(ms: Long): String {
+        val hours = ms / 3600000
+        val minutes = (ms % 3600000) / 60000
+        val seconds = (ms % 60000) / 1000
+        val milliseconds = ms % 1000
+        return String.format(java.util.Locale.US, "%02d:%02d:%02d,%03d", hours, minutes, seconds, milliseconds)
+    }
+
+    fun restoreSessionsFromBackup(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val backupDir = java.io.File(downloadsDir, ".logs-sub")
+                val mainBackupFile = java.io.File(backupDir, "sessions_metadata_backup.json")
+                if (!mainBackupFile.exists()) {
+                    withContext(Dispatchers.Main) {
+                        onResult(false, "هیچ فایل پشتیبانی پیدا نشد.")
+                    }
+                    return@launch
+                }
+
+                val jsonStr = mainBackupFile.readText(Charsets.UTF_8)
+                val array = org.json.JSONArray(jsonStr)
+                var restoredCount = 0
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val mediaUri = obj.getString("mediaUri")
+                    val mediaName = obj.getString("mediaName")
+                    val mediaMimeType = obj.getString("mediaMimeType")
+                    val txtUri = obj.optString("txtUri", "")
+                    val txtName = obj.optString("txtName", "")
+                    val srtLinesJson = obj.optString("srtLinesJson", "")
+                    val lastActiveTimeMs = obj.optLong("lastActiveTimeMs", System.currentTimeMillis())
+
+                    val existing = repository.getTapSessionByUri(mediaUri)
+                    if (existing == null) {
+                        repository.saveTapSession(
+                            TapSession(
+                                mediaUri = mediaUri,
+                                mediaName = mediaName,
+                                mediaMimeType = mediaMimeType,
+                                txtUri = txtUri,
+                                txtName = txtName,
+                                srtLinesJson = srtLinesJson,
+                                lastActiveTimeMs = lastActiveTimeMs
+                            )
+                        )
+                        restoredCount++
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    onResult(true, "تعداد $restoredCount جلسه با موفقیت بازیابی شد.")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to restore sessions from backup", e)
+                withContext(Dispatchers.Main) {
+                    onResult(false, "خطا در بازیابی پشتیبان: ${e.localizedMessage}")
+                }
+            }
         }
     }
 
@@ -1373,6 +1511,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
 
             val updatedSession = session.copy(lastActiveTimeMs = System.currentTimeMillis())
             repository.saveTapSession(updatedSession)
+            backupSessionsToDownloadFolder()
         }
     }
 
@@ -1381,6 +1520,8 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             repository.deleteTapSession(session.mediaUri)
             if (_tapAudioFileUri.value?.toString() == session.mediaUri) {
                 clearTapSelectedAudio()
+            } else {
+                backupSessionsToDownloadFolder()
             }
         }
     }
@@ -1394,6 +1535,12 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         _tapActiveLineIndex.value = 0
         _tapIsRecording.value = false
         _tapCurrentRecordingStartMs.value = 0L
+
+        // Clear TXT file state on clear
+        _tapSourceTxtFileUri.value = null
+        _tapSourceTxtFileName.value = null
+        _tapSourceTxtLines.value = emptyList()
+
         viewModelScope.launch {
             repository.saveSetting("tap_selected_audio_uri", "")
             repository.saveSetting("tap_selected_audio_name", "")
@@ -1401,6 +1548,9 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             repository.saveSetting("tap_is_recording", "false")
             repository.saveSetting("tap_current_rec_start_ms", "0")
             repository.saveSetting("tap_active_line_index", "0")
+            repository.saveSetting("tap_txt_file_uri", "")
+            repository.saveSetting("tap_txt_file_name", "")
+            repository.saveSetting("tap_source_txt", "")
         }
     }
 

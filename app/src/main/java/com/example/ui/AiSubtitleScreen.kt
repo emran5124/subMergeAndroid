@@ -795,6 +795,48 @@ fun AiSubtitleScreen(
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "پشتیبان‌گیری خودکار فعال است",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "سشن‌های شما در پوشه Download/.logs-sub ذخیره می‌شوند تا در صورت حذف برنامه بازیابی شوند.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    viewModel.restoreSessionsFromBackup { success, message ->
+                                        android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Icon(Icons.Filled.Restore, contentDescription = "Restore")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("بازیابی سشن‌ها", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
                     val tapSessions by viewModel.tapSessionsList.collectAsState()
                     if (tapSessions.isNotEmpty()) {
                         Text(
