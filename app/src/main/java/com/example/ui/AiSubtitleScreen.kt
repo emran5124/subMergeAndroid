@@ -27,6 +27,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.network.GeminiApiClient
@@ -322,26 +325,36 @@ fun AiSubtitleScreen(
                         color = MaterialTheme.colorScheme.secondary
                     )
 
-                    OutlinedTextField(
-                        value = aiCustomPrompt,
-                        onValueChange = { viewModel.setAiCustomPrompt(it) },
-                        label = { Text("AI Instructions / System Prompt") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 120.dp, max = 220.dp),
-                        supportingText = { Text("Supports '[sourceTextPlaceholder]' placeholder which dynamically swaps with the lines below.") }
-                    )
+                    val promptIsRtl = isRtlText(aiCustomPrompt)
+                    CompositionLocalProvider(LocalLayoutDirection provides (if (promptIsRtl) LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+                        OutlinedTextField(
+                            value = aiCustomPrompt,
+                            onValueChange = { viewModel.setAiCustomPrompt(it) },
+                            label = { Text("AI Instructions / System Prompt") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp, max = 220.dp),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                            supportingText = { Text("Supports '[sourceTextPlaceholder]' placeholder which dynamically swaps with the lines below.") }
+                        )
+                    }
 
-                    OutlinedTextField(
-                        value = aiSourceText,
-                        onValueChange = { viewModel.setAiSourceText(it) },
-                        label = { Text("Source Text Lines (Optional)") },
-                        placeholder = { Text("text1\ntext2\ntext3...") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 120.dp, max = 200.dp),
-                        supportingText = { Text("If provided, Gemini forces each output SRT block line to align exactly with each source row.") }
-                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val sourceIsRtl = isRtlText(aiSourceText)
+                    CompositionLocalProvider(LocalLayoutDirection provides (if (sourceIsRtl) LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+                        OutlinedTextField(
+                            value = aiSourceText,
+                            onValueChange = { viewModel.setAiSourceText(it) },
+                            label = { Text("Source Text Lines (Optional)") },
+                            placeholder = { Text("text1\ntext2\ntext3...") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp, max = 200.dp),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                            supportingText = { Text("If provided, Gemini forces each output SRT block line to align exactly with each source row.") }
+                        )
+                    }
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -583,12 +596,17 @@ fun AiSubtitleScreen(
                                     )
                                 }
 
-                                OutlinedTextField(
-                                    value = activeLine.text,
-                                    onValueChange = { viewModel.updateAiLineText(aiActiveIndex, it) },
-                                    label = { Text("Subtitle Text") },
-                                    modifier = Modifier.fillMaxWidth().testTag("ai_srt_text_input")
-                                )
+                                val lineText = activeLine.text
+                                val lineIsRtl = isRtlText(lineText)
+                                CompositionLocalProvider(LocalLayoutDirection provides (if (lineIsRtl) LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+                                    OutlinedTextField(
+                                        value = lineText,
+                                        onValueChange = { viewModel.updateAiLineText(aiActiveIndex, it) },
+                                        label = { Text("Subtitle Text") },
+                                        modifier = Modifier.fillMaxWidth().testTag("ai_srt_text_input"),
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content)
+                                    )
+                                }
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -1422,14 +1440,18 @@ fun AiSubtitleScreen(
                                         // Inline editing controls when selected/tapped!
                                         Spacer(modifier = Modifier.height(8.dp))
 
-                                        OutlinedTextField(
-                                            value = item.text,
-                                            onValueChange = { viewModel.updateTapLineText(idx, it) },
-                                            label = { Text("Edit Line Content text") },
-                                            modifier = Modifier.fillMaxWidth().testTag("tap_srt_text_input_$idx"),
-                                            textStyle = MaterialTheme.typography.bodyMedium,
-                                            singleLine = true
-                                        )
+                                        val itemText = item.text
+                                        val itemIsRtl = isRtlText(itemText)
+                                        CompositionLocalProvider(LocalLayoutDirection provides (if (itemIsRtl) LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+                                            OutlinedTextField(
+                                                value = itemText,
+                                                onValueChange = { viewModel.updateTapLineText(idx, it) },
+                                                label = { Text("Edit Line Content text") },
+                                                modifier = Modifier.fillMaxWidth().testTag("tap_srt_text_input_$idx"),
+                                                textStyle = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                                                singleLine = true
+                                            )
+                                        }
 
                                         Spacer(modifier = Modifier.height(8.dp))
 

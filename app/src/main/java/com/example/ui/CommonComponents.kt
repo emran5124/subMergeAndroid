@@ -27,6 +27,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -162,6 +165,17 @@ fun ActiveMediaPlayerComponent(
     }
 }
 
+fun isRtlText(text: String): Boolean {
+    for (char in text) {
+        val code = char.code
+        // Arabic, Persian, Hebrew, and other RTL ranges
+        if (code in 0x0590..0x05FF || code in 0x0600..0x06FF || code in 0x0750..0x077F || code in 0x08A0..0x08FF || code in 0xFB50..0xFDFF || code in 0xFE70..0xFEFF) {
+            return true
+        }
+    }
+    return false
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ActiveLineEditingPanel(
@@ -231,25 +245,42 @@ fun ActiveLineEditingPanel(
             }
 
             // Display current reviewer text
-            OutlinedTextField(
-                value = line.selectedTranslationText ?: "",
-                onValueChange = { onTranslationEdit(it) },
-                label = { Text("Reviewed / Selected translation") },
-                placeholder = { Text("Click translate alternative below or type correct translations here...") },
-                modifier = Modifier.fillMaxWidth().testTag("trans_srt_input"),
-                textStyle = MaterialTheme.typography.bodyMedium,
-                maxLines = 3
-            )
+            val transText = line.selectedTranslationText ?: ""
+            val isRtlAlternative = line.alternatives.any { isRtlText(it.text) } || isRtlText(line.nativeText)
+            val transIsRtl = isRtlText(transText) || (transText.isEmpty() && isRtlAlternative)
+            val transLayoutDirection = if (transIsRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+
+            CompositionLocalProvider(LocalLayoutDirection provides transLayoutDirection) {
+                OutlinedTextField(
+                    value = transText,
+                    onValueChange = { onTranslationEdit(it) },
+                    label = { Text("Reviewed / Selected translation") },
+                    placeholder = { Text("Click translate alternative below or type correct translations here...") },
+                    modifier = Modifier.fillMaxWidth().testTag("trans_srt_input"),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        textDirection = TextDirection.Content
+                    ),
+                    maxLines = 3
+                )
+            }
 
             // Native subtitle Text
-            OutlinedTextField(
-                value = line.nativeText,
-                onValueChange = { onNativeEdit(it) },
-                label = { Text("Native Text (main.srt)") },
-                modifier = Modifier.fillMaxWidth().testTag("native_srt_input"),
-                textStyle = MaterialTheme.typography.bodyMedium,
-                maxLines = 2
-            )
+            val nativeText = line.nativeText
+            val nativeIsRtl = isRtlText(nativeText)
+            val nativeLayoutDirection = if (nativeIsRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+
+            CompositionLocalProvider(LocalLayoutDirection provides nativeLayoutDirection) {
+                OutlinedTextField(
+                    value = nativeText,
+                    onValueChange = { onNativeEdit(it) },
+                    label = { Text("Native Text (main.srt)") },
+                    modifier = Modifier.fillMaxWidth().testTag("native_srt_input"),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        textDirection = TextDirection.Content
+                    ),
+                    maxLines = 2
+                )
+            }
 
             // Alternative translations list shows actual corresponding lines from other translation files
             Text(
@@ -301,11 +332,17 @@ fun ActiveLineEditingPanel(
                                 }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = alt.text,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            val altIsRtl = isRtlText(alt.text)
+                            CompositionLocalProvider(LocalLayoutDirection provides (if (altIsRtl) LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+                                Text(
+                                    text = alt.text,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        textDirection = TextDirection.Content
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                     }
                 }
@@ -349,16 +386,23 @@ fun ActiveLineEditingPanel(
                             }
                         }
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = if (!line.selectedTranslationText.isNullOrBlank() && isCustomSelected) {
-                                line.selectedTranslationText
-                            } else {
-                                "Tap to select Custom Review and type below..."
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontStyle = if (line.selectedTranslationText.isNullOrBlank() && isCustomSelected) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        val customText = if (!line.selectedTranslationText.isNullOrBlank() && isCustomSelected) {
+                            line.selectedTranslationText ?: ""
+                        } else {
+                            "Tap to select Custom Review and type below..."
+                        }
+                        val customIsRtl = isRtlText(customText)
+                        CompositionLocalProvider(LocalLayoutDirection provides (if (customIsRtl) LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+                            Text(
+                                text = customText,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    textDirection = TextDirection.Content
+                                ),
+                                fontStyle = if (line.selectedTranslationText.isNullOrBlank() && isCustomSelected) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }
@@ -424,19 +468,32 @@ fun SubtitleLinesListView(
                         )
                     }
 
-                    Text(
-                        text = "Native: ${item.nativeText}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
+                    val nativeIsRtl = isRtlText(item.nativeText)
+                    CompositionLocalProvider(LocalLayoutDirection provides (if (nativeIsRtl) LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+                        Text(
+                            text = "Native: ${item.nativeText}",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                textDirection = TextDirection.Content
+                            ),
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
 
                     if (!item.selectedTranslationText.isNullOrBlank()) {
-                        Text(
-                            text = "Review: ${item.selectedTranslationText}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium
-                        )
+                        val reviewText = item.selectedTranslationText ?: ""
+                        val reviewIsRtl = isRtlText(reviewText)
+                        CompositionLocalProvider(LocalLayoutDirection provides (if (reviewIsRtl) LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+                            Text(
+                                text = "Review: $reviewText",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    textDirection = TextDirection.Content
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }
