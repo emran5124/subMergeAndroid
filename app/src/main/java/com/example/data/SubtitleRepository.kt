@@ -151,9 +151,10 @@ class SubtitleRepository(private val context: Context, private val database: App
         for (line in mainSrtLines) {
             val cached = dbLinesMap[line.index]
 
-            val finalStartTime = cached?.startTimeMs ?: line.startTimeMs
-            val finalEndTime = cached?.endTimeMs ?: line.endTimeMs
-            val finalNativeText = cached?.editedNativeText ?: line.text
+            // Always trust physical main.srt for timings and native text, as they might be edited externally (e.g. via tap-to-sync)
+            val finalStartTime = line.startTimeMs
+            val finalEndTime = line.endTimeMs
+            val finalNativeText = line.text
 
             // Build Alternatives (matching line index)
             val alternatives = mutableListOf<AlternativeTranslation>()
