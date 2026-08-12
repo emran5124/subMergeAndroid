@@ -219,6 +219,9 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     private val _tapPlayerDuration = MutableStateFlow(0L)
     val tapPlayerDuration: StateFlow<Long> = _tapPlayerDuration.asStateFlow()
 
+    private val _tapPlaybackSpeed = MutableStateFlow(1.0f)
+    val tapPlaybackSpeed: StateFlow<Float> = _tapPlaybackSpeed.asStateFlow()
+
     val tapSessionsList: StateFlow<List<TapSession>> = repository.tapSessionsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -1574,6 +1577,30 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         }
     }
 
+    fun setTapPlaybackSpeed(speed: Float) {
+        _tapPlaybackSpeed.value = speed
+        applyTapPlaybackSpeed()
+    }
+
+    private fun applyTapPlaybackSpeed() {
+        val player = tapMediaPlayer ?: return
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            try {
+                val wasPlaying = player.isPlaying
+                val params = player.playbackParams ?: android.media.PlaybackParams()
+                params.speed = _tapPlaybackSpeed.value
+                player.playbackParams = params
+                if (!wasPlaying && player.isPlaying) {
+                    player.pause()
+                } else if (wasPlaying) {
+                    startTapPlayerTracking()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to apply tap playback speed", e)
+            }
+        }
+    }
+
     private fun initializeTapMediaPlayer(uri: Uri) {
         stopCleanTapMediaPlayer()
         try {
@@ -1582,6 +1609,7 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
                 prepare()
                 _tapPlayerDuration.value = duration.toLong()
             }
+            applyTapPlaybackSpeed()
             _tapPlayerIsPlaying.value = false
             _tapPlayerCurrentPosMs.value = 0L
         } catch (e: Exception) {
@@ -1596,7 +1624,17 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
             _tapPlayerIsPlaying.value = false
             stopTapPlayerTracking()
         } else {
-            player.start()
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                try {
+                    val params = player.playbackParams ?: android.media.PlaybackParams()
+                    params.speed = _tapPlaybackSpeed.value
+                    player.playbackParams = params
+                } catch (e: Exception) {
+                    player.start()
+                }
+            } else {
+                player.start()
+            }
             _tapPlayerIsPlaying.value = true
             startTapPlayerTracking()
         }
@@ -1625,12 +1663,13 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         tapPlayerTrackingJob = viewModelScope.launch(Dispatchers.Main) {
             val startTime = java.lang.System.currentTimeMillis()
             val initialPlayerPos = tapMediaPlayer?.currentPosition?.toLong() ?: 0L
+            val currentSpeed = _tapPlaybackSpeed.value
             
             while (isActive) {
                 val player = tapMediaPlayer
                 if (player != null && player.isPlaying && !_tapIsSeeking.value) {
                     val elapsedRealtime = java.lang.System.currentTimeMillis() - startTime
-                    val estimatedPos = initialPlayerPos + elapsedRealtime
+                    val estimatedPos = initialPlayerPos + (elapsedRealtime * currentSpeed).toLong()
                     
                     val actualPos = player.currentPosition.toLong()
                     val drift = Math.abs(estimatedPos - actualPos)

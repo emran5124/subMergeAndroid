@@ -98,6 +98,7 @@ fun AiSubtitleScreen(
     val tapPlayerIsPlaying by viewModel.tapPlayerIsPlaying.collectAsState()
     val tapPlayerPosMs by viewModel.tapPlayerCurrentPosMs.collectAsState()
     val tapPlayerDurationMs by viewModel.tapPlayerDuration.collectAsState()
+    val tapPlaybackSpeed by viewModel.tapPlaybackSpeed.collectAsState()
 
     androidx.activity.compose.BackHandler(enabled = (studioOption == 1 && aiAudioUri != null) || (studioOption == 2 && tapAudioUri != null)) {
         if (studioOption == 1) {
@@ -1138,6 +1139,91 @@ fun AiSubtitleScreen(
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     )
+
+                                    // Playback Speed Controls Row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        var showSpeedMenu by remember { mutableStateOf(false) }
+
+                                        Box {
+                                            Surface(
+                                                onClick = { showSpeedMenu = true },
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.height(28.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Speed,
+                                                        contentDescription = "Playback Speed",
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Text(
+                                                        text = "${if (tapPlaybackSpeed % 1.0f == 0f) tapPlaybackSpeed.toInt().toString() else tapPlaybackSpeed.toString()}x",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+
+                                            DropdownMenu(
+                                                expanded = showSpeedMenu,
+                                                onDismissRequest = { showSpeedMenu = false }
+                                            ) {
+                                                listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f).forEach { speed ->
+                                                    DropdownMenuItem(
+                                                        text = {
+                                                            Text(
+                                                                text = if (speed == 1.0f) "1.0x (Normal)" else if (speed == 2.0f) "2.0x (2x Speed)" else "${speed}x",
+                                                                fontWeight = if (tapPlaybackSpeed == speed) FontWeight.Bold else FontWeight.Normal,
+                                                                color = if (tapPlaybackSpeed == speed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                        },
+                                                        onClick = {
+                                                            viewModel.setTapPlaybackSpeed(speed)
+                                                            showSpeedMenu = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Quick Speed Chips
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { speed ->
+                                                val isSelected = (tapPlaybackSpeed == speed)
+                                                Surface(
+                                                    onClick = { viewModel.setTapPlaybackSpeed(speed) },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.height(26.dp)
+                                                ) {
+                                                    Box(
+                                                        contentAlignment = Alignment.Center,
+                                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = if (speed == 1.0f) "1x" else if (speed == 2.0f) "2x" else "${speed}x",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
 
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
