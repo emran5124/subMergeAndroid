@@ -1,0 +1,179 @@
+# Comprehensive Implementation Plan: Subtitle Maker & Reviewer Studio
+
+This step-by-step engineering roadmap guides an AI or human developer to build the complete Android application featuring **Tap-to-Sync Subtitle Maker** and **Reviewer Studio** using Kotlin and Jetpack Compose.
+
+---
+
+## Phase 1: Project Architecture & Tech Stack Setup
+
+### 1.1 Dependencies & Version Catalog (`libs.versions.toml`)
+- **UI Framework**: Jetpack Compose BOM + Material 3 (`androidx.compose.material3`).
+- **Icons**: Extended Material Icons (`androidx.compose.material:material-icons-extended`).
+- **Lifecycle & ViewModel**: `androidx.lifecycle:lifecycle-viewmodel-compose`, `lifecycle-runtime-compose`.
+- **Local Database**: Android Room (`androidx.room:room-runtime`, `androidx.room:room-ktx`, `androidx.room:room-compiler` via KSP).
+- **Coroutines**: `kotlinx-coroutines-android`, `kotlinx-coroutines-core`.
+- **Document Handling**: `androidx.documentfile:documentfile` (SAF tree traversal).
+- **Navigation**: `androidx.navigation:navigation-compose`.
+
+### 1.2 Package Structure
+```
+com.example.
+├── data/
+│   ├── local/             # Room Database, DAOs, Entities
+│   ├── model/             # SrtLine, ProjectMetadata, AlternativeTranslation, TapSession
+│   ├── parser/            # SrtParser, SrtSerializer
+│   └── repository/        # SubtitleRepository, WorkspaceManager
+├── media/
+│   └── MediaPlayerManager # Synchronized playback, speed control, time tracking
+├── ui/
+│   ├── common/            # VideoSurface, TimePickers, Waveforms, Reusable Dialogs
+│   ├── tap2sync/          # TapToSyncScreen, TapStudioViewModel, TapControlComponents
+│   ├── reviewer/          # ReviewerScreen, ReviewerViewModel, MatrixComponents
+│   ├── navigation/        # NavHost, AppRoutes
+│   └── theme/             # Material 3 ColorScheme, Type, Shapes (RTL Support)
+└── util/
+    ├── TimeUtils.kt       # Srt time formatting, parsing (HH:mm:ss,SSS)
+    └── Extensions.kt      # Context, SAF Uri extensions
+```
+
+---
+
+## Phase 2: Data Models, Parsers & Storage Engine
+
+### 2.1 Core Domain Models
+- **`SrtLine`**:
+  - `index: Int` (1-based index)
+  - `startTimeMs: Long`
+  - `endTimeMs: Long`
+  - `text: String`
+  - `metadata: Map<String, String>` (optional tags)
+- **`AlternativeTranslation`**:
+  - `sourceName: String` (e.g., `fa_gemini.srt`, `fa_manual.srt`)
+  - `translatedText: String`
+  - `isSelected: Boolean`
+- **`ReviewableLine`**:
+  - `lineIndex: Int`
+  - `startTimeMs: Long`
+  - `endTimeMs: Long`
+  - `nativeText: String`
+  - `alternatives: List<AlternativeTranslation>`
+  - `editedFinalText: String?`
+  - `isReviewed: Boolean`
+
+### 2.2 Room Persistence
+- **Entities**:
+  - `TapSessionEntity`: Stores in-progress tap sessions (`id`, `title`, `mediaUri`, `rawText`, `linesJson`, `lastModified`).
+  - `ProjectReviewCacheEntity`: Caches selected translation choices per project subfolder (`projectFolderUri`, `lineIndex`, `selectedSource`, `editedText`, `isReviewed`).
+- **DAOs**: `TapSessionDao`, `ProjectReviewDao`.
+
+### 2.3 Subtitle Parser & Serializer (`SrtParser.kt`)
+- **Robust Multi-line Regex Parser**:
+  - Handles various timestamp formats (`00:00:00,000` and `00:00:00.000`).
+  - Correctly preserves multi-line subtitle blocks, HTML tags (`<i>`, `<b>`, `<font>`), and RTL markers.
+  - Formats millisecond timestamps into strict standard SRT time strings (`HH:mm:ss,SSS`).
+- **Serializer**:
+  - Generates strictly formatted `.srt` outputs with zero empty-line indexing corruptions.
+
+### 2.4 SAF Repository (`SubtitleRepository.kt`)
+- Scans user-selected workspace directory:
+  - Iterates subdirectories (`DocumentFile.listFiles()`).
+  - Identifies media files (`.mp4`, `.mkv`, `.mp3`, `.wav`, `.m4a`).
+  - Identifies master file: `main.srt`.
+  - Identifies alternative translation files (any other `.srt` file in the folder).
+- **Critical File-Sync Rule**:
+  - Always read physical `main.srt` timestamps and native text directly as the single source of truth when loading/merging projects so external modifications (e.g. from Tap-to-Sync) are never overwritten by stale cached data.
+- Directly modifies physical `main.srt` and writes merged output SRTs back to user-granted storage trees.
+
+---
+
+## Phase 3: Synchronized Media Engine
+
+### 3.1 MediaPlayer & Video Surface Component
+- Wrap `android.media.MediaPlayer` into a lifecycle-aware manager.
+- Create an `AndroidView(SurfaceView)` composable that attaches the `SurfaceHolder` to the `MediaPlayer` smoothly without tearing or black flickers.
+- Handle audio-only files by showing an animated waveform/audio visualizer placeholder when no video track exists.
+
+### 3.2 High-Precision Speed-Aware Tracking Loop
+- Run a coroutine loop (`Dispatchers.Main`) with 16ms tick intervals when `isPlaying == true`.
+- **Playback Speed Management**:
+  - Expose API to change speed (`0.5x`, `0.75x`, `1.0x`, `1.25x`, `1.5x`, `1.75x`, `2.0x`) using `player.playbackParams = PlaybackParams().setSpeed(speed)`.
+  - Calculate estimated position accounting for playback speed to eliminate UI scrub-bar jitter:
+    `estimatedPos = initialPos + (elapsedRealtime * currentSpeed)`.
+- **Line-Bounded Playback ("Audition Mode")**:
+  - Method: `playLineSegment(startTimeMs: Long, stopTimeMs: Long)`.
+  - Seeks to `startTimeMs`, starts playback, and automatically pauses exactly when `currentPosMs >= stopTimeMs`.
+
+---
+
+## Phase 4: Module 1 — Tap-to-Sync Studio
+
+### 4.1 Step 1: Input & Setup
+- **Media Picker**: Open system file picker via `ActivityResultContracts.OpenDocument()`. Request persistable URI permissions.
+- **Transcript Input View**:
+  - TextField to paste raw script or load plain `.txt` / `.srt`.
+  - **Auto-Split Tools**: Split text into subtitle cues by line breaks, sentence delimiters (`.`, `!`, `?`), or custom character limits (e.g., max 40 chars).
+  - List of past saved drafts with one-tap restore.
+
+### 4.2 Step 2: Live Tapping Engine
+- **Tapping Modes**:
+  - *Sequential Mode*: Press tap button -> sets `startTimeMs` for active line -> press again -> sets `endTimeMs` and instantly advances to next line.
+  - *Continuous Hold Mode*: Keydown/Press sets `startTime`, Keyup/Release sets `endTime` and advances.
+- **UI & UX Controls**:
+  - Large tactile on-screen tap button with pulsing animations and haptic feedback (`LocalHapticFeedback`).
+  - Speed toggle dropdown and quick-select chips (`0.5x` to `2.0x`).
+  - Real-time auto-scrolling line list keeping the currently active line centered.
+  - Action buttons: "Pause / Resume", "Undo Last Tap", "Reset Tapping".
+
+### 4.3 Step 3: Fine-Tuning & Line Adjuster
+- **Interactive Line Card**:
+  - Quick millisecond nudge buttons: `[-500ms] [-100ms] [-50ms] [Time Display] [+50ms] [+100ms] [+500ms]`.
+  - Tap-to-play single line audition button.
+  - Inline text editor for spelling or formatting corrections (supporting bi-directional RTL/LTR text).
+  - Line Operations: "Split Line", "Merge with Next", "Insert Line Above/Below", "Delete Line".
+
+### 4.4 Step 4: Export & Output
+- Export generated subtitles as `main.srt` directly to device storage or save as a draft session in the local Room database.
+
+---
+
+## Phase 5: Module 2 — Reviewer Studio
+
+### 5.1 Step 1: Workspace Folder Scanner
+- User selects root folder with SAF Tree Picker (`OpenDocumentTree`).
+- App discovers all subfolders containing projects.
+- Subfolder Card lists: Project name, detected media filename, `main.srt` status, and list of detected translation files (e.g. `[fa_gemini.srt, fa_human.srt]`).
+
+### 5.2 Step 2: Multi-Translation Matrix Interface
+- **Layout**:
+  - **Tablet / Landscape**: Side-by-side split screen (Left: Media Player & Controls; Right: Review Matrix).
+  - **Phone / Portrait**: Docked top media player + scrollable bottom review list.
+- **Matrix Row Component**:
+  - **Header**: Line index badge, start/end timestamps, and "Audition Segment" play button.
+  - **Reference Text**: Original native transcription from `main.srt`.
+  - **Translation Option Cards**: Radio-selectable cards for each candidate source displaying source label, translation text, and word count.
+  - **Custom Polish Editor**: TextField for manual refinement when none of the automatic candidates are 100% ideal.
+
+### 5.3 Step 3: Batch Operations & Quality Checks
+- **Global Batch Selector**: "Select All from [fa_gemini.srt]" or "Select All from [fa_human.srt]".
+- **Search & Replace**: Batch replace terminology or names across all chosen translations.
+- **Filter Chips**: "Show All", "Show Unreviewed Only", "Show Edited Only", "Show Potential Timing Overlaps".
+
+### 5.4 Step 4: Compilation & Final Export
+- **Export Formats**:
+  1. *Merged Final SRT*: Writes selected translations with master timestamps to `output.srt` or saves directly back to the project folder.
+  2. *Bilingual SRT*: Combines Reference Text + Selected Translation text for language learners or dual-subtitles.
+
+---
+
+## Phase 6: Edge Cases & Polish
+
+1. **SAF Permission Persistence**:
+   - Always call `context.contentResolver.takePersistableUriPermission()` to maintain folder access across app restarts.
+2. **Authoritative Timestamp Sync**:
+   - Never let cached DB timestamps overwrite a newly edited `main.srt`. Always read timestamps fresh from the physical `main.srt` file.
+3. **Variable Playback Speed Calibration**:
+   - Verify `PlaybackParams.speed` works seamlessly across all supported Android versions (API 23+) without pitch distortion.
+4. **Bi-directional (RTL/LTR) Text Formatting**:
+   - Ensure proper text alignment and unicode directional markers (`\u200E`, `\u200F`) for Arabic/Persian subtitles.
+5. **Accessibility & Touch Targets**:
+   - Maintain minimum 48dp touch targets for all timing adjusters, tap triggers, and candidate selection cards.

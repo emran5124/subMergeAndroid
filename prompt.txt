@@ -1,0 +1,85 @@
+Create a professional, modern Android application using Kotlin and Jetpack Compose featuring two core subtitle workflows: "Tap-to-Sync Subtitle Maker" and "Reviewer Studio".
+
+---
+
+### Core Architectural & UI Foundations
+- **Framework**: Jetpack Compose, Material Design 3 (M3) with dynamic color theming, edge-to-edge layout support, fluid responsive UI (tablets/phones).
+- **Architecture**: Clean MVVM architecture (ViewModels, StateFlow, Room Database, Kotlin Coroutines).
+- **Storage**: Storage Access Framework (SAF / `DocumentFile`) for folder-based project loading and direct file I/O, plus Room for caching drafts and sessions.
+- **Media Engine**: Native Android `MediaPlayer` with `SurfaceView` integration for synchronized video/audio playback, precise millisecond seeking, and real-time tracking.
+
+---
+
+### Module 1: Tap-to-Sync Studio (Live Subtitle Synchronizer)
+
+A precision tool designed to synchronize plain text/transcriptions to audio or video in real-time by tapping as the media plays, with robust fine-tuning and SRT generation.
+
+#### 1. Input & Session Setup
+- **Media Loader**: Supports picking audio or video files (MP4, MKV, MP3, WAV, AAC, etc.) via SAF. Includes a toggleable video player preview (SurfaceView) or audio waveform placeholder.
+- **Text Import**:
+  - Paste raw script, transcript, or lyrics into a clean text editor.
+  - Auto-split into subtitle lines by newlines, sentences, or character length thresholds.
+  - Option to load existing unfinished tap sessions from local Room database or import existing SRT files for re-timing.
+- **Playback Speed Selector**:
+  - Toggle playback speed directly on the player: `0.5x`, `0.75x`, `1.0x`, `1.25x`, `1.5x`, `1.75x`, `2.0x`.
+  - Drift-compensated time tracking that matches actual media speed during live tapping.
+
+#### 2. Live Synchronization (Tap Engine)
+- **Interactive Tapping Modes**:
+  - **Press-and-Hold / Sequential Tap**: Press to mark the start time of the current line; release or press again to mark the end time and automatically advance to the next line.
+  - **Large On-Screen Tap Target & Keyboard / Spacebar Support**: High-contrast, tactile tapping button with visual active pulse and haptic feedback.
+- **Live Visual Feed**:
+  - Highlights currently active line, previous completed lines, and upcoming lines in a smooth auto-scrolling list.
+  - Real-time timestamp display (`HH:MM:SS,mmm`).
+  - Pause, resume, undo last tap, and restart tapping without losing progress.
+
+#### 3. Post-Sync Fine-Tuning & Editor
+- **Line-by-Line Preview**:
+  - Clicking any subtitle line automatically seeks the media player to that line's `startTimeMs` and plays until `endTimeMs` for immediate audio-visual verification.
+- **Nudge Timing Controls**:
+  - Quick millisecond nudge buttons for start and end times: `±50ms`, `±100ms`, `±500ms`.
+- **Text & Segment Editing**:
+  - Edit subtitle text in-place with full RTL (Persian, Arabic, Hebrew) and LTR bi-directional support.
+  - Insert new subtitle lines, delete erroneous lines, split long lines, or merge adjacent lines.
+- **Export & Output**:
+  - Export standard, compliant `.srt` files (`main.srt`) with correct sequential numbering and timestamp formatting (`00:00:00,000 --> 00:00:00,000`).
+  - Save project session to Room database for continuous editing across app restarts.
+
+---
+
+### Module 2: Reviewer Studio (Multi-Translation Matrix & Quality Assurance)
+
+A workspace-based reviewer environment designed to compare, select, edit, and merge multiple translation candidates against master `main.srt` subtitles with synchronized media playback.
+
+#### 1. Workspace & Project Folder Hierarchy
+- **SAF Workspace Directory Picker**: User selects a root directory containing project subfolders.
+- **Automated Project Discovery**:
+  - Scans subdirectories where each project folder contains:
+    - A media file (`video.mp4`, `audio.mp3`, etc.).
+    - Master reference subtitle: `main.srt` (defines the master timestamps and original transcription text).
+    - Multiple alternative translation SRT files (e.g. `fa_gemini.srt`, `fa_manual.srt`, `en_translated.srt`, `de.srt`).
+- **Dynamic File Sync**:
+  - Respects physical file edits made by external tools or the Tap-to-Sync module, ensuring physical `main.srt` timings and texts are authoritative and always up to date.
+
+#### 2. Synchronized Comparison & Review Interface
+- **Split / Dual-Pane Layout**:
+  - **Media Preview Pane**: Floating or docked video/audio player with seeking, scrub slider, play/pause, and line-bound playback.
+  - **Review Matrix List**: LazyColumn containing each master subtitle segment mapped to its parallel translation candidates.
+- **Candidate Card Components**:
+  - Displays original reference text from `main.srt` along with timing badges.
+  - Displays alternative translations side-by-side or as selectable radio/choice cards.
+  - Shows translation source badges (e.g. AI Model names, translator tags, or file source names).
+  - One-tap selection to set the preferred translation for each individual line.
+  - Custom in-line translation override editor for manual polishing.
+
+#### 3. Reviewer Workflow & Audio-Visual Verification
+- **One-Click Line Playback**: Clicking any segment or alternative translation card seeks the media to the exact start timestamp and plays until the end timestamp.
+- **Batch Translation Operations**:
+  - "Select all from Source X" (e.g., apply all candidates from `fa_gemini.srt` by default).
+  - Search and replace across all translations.
+  - Filter lines by unreviewed status, edited status, or potential timing overlaps.
+
+#### 4. Final Compilation & Export
+- **Merged SRT Export**: Generates a clean, finalized `.srt` file containing the selected translations with exact master timings.
+- **Dual-Language / Bilingual Export**: Option to export dual-line subtitles (Master Native Text on top + Selected Translation below).
+- **Physical Sync**: Writes changes back directly into project files or exports to a designated output folder.
