@@ -4,12 +4,41 @@ This step-by-step engineering roadmap guides an AI or human developer to build t
 
 ---
 
+## Core Pillars: Zero-Data-Loss State Persistence & Elite UX
+
+Before diving into components, the implementation must adhere strictly to these two non-negotiable architectural pillars:
+
+### 1. Bulletproof State Preservation & Auto-Save
+- **Continuous Reactive Auto-Save**:
+  - Every single live tap, millisecond nudge, text modification, or translation selection must trigger a background debounce/write into Room / persistent storage (`Dispatchers.IO`).
+  - No "Save" button should be required to protect user work.
+- **Process Death & Crash Resilience**:
+  - Store active playback position, active line index, selected project folder URI, and working drafts in Room / `SavedStateHandle`.
+  - When the app is killed by the OS in the background or crashes, relaunching must immediately restore the user to the exact sub-millisecond state, active line, and workspace without losing any edits.
+- **Persistent SAF Permissions**:
+  - Call `takePersistableUriPermission` on all selected tree and document URIs so folder permissions survive device reboots.
+
+### 2. Elite UX, Ergonomics & Accessibility
+- **Tactile & Responsive Feedback**:
+  - Instant visual state transitions with smooth pulse animations on active tap elements.
+  - Multi-level haptic feedback (`HapticFeedbackType.LongPress`, `TextHandleMove`) on every tap event and timing nudge.
+- **Accessibility & Touch Ergonomics**:
+  - Minimum 48dp touch targets on all interactive elements (`minimumInteractiveComponentSize`).
+  - High-contrast visual cues for active, completed, and unreviewed subtitle lines.
+  - Full Bi-directional RTL/LTR support (Persian, Arabic, English) with natural text flow and typography.
+- **Frictionless Navigation & Safety Nets**:
+  - Multi-level Undo / Redo for live tapping and line editing.
+  - Clear, non-intrusive modal confirmations for destructive actions (e.g., resetting taps or deleting lines).
+  - Smooth auto-scrolling that keeps the active subtitle line centered in the viewport during playback and tapping.
+
+---
+
 ## Phase 1: Project Architecture & Tech Stack Setup
 
 ### 1.1 Dependencies & Version Catalog (`libs.versions.toml`)
 - **UI Framework**: Jetpack Compose BOM + Material 3 (`androidx.compose.material3`).
 - **Icons**: Extended Material Icons (`androidx.compose.material:material-icons-extended`).
-- **Lifecycle & ViewModel**: `androidx.lifecycle:lifecycle-viewmodel-compose`, `lifecycle-runtime-compose`.
+- **Lifecycle & ViewModel**: `androidx.lifecycle:lifecycle-viewmodel-compose`, `lifecycle-runtime-compose`, `lifecycle-viewmodel-savedstate`.
 - **Local Database**: Android Room (`androidx.room:room-runtime`, `androidx.room:room-ktx`, `androidx.room:room-compiler` via KSP).
 - **Coroutines**: `kotlinx-coroutines-android`, `kotlinx-coroutines-core`.
 - **Document Handling**: `androidx.documentfile:documentfile` (SAF tree traversal).
@@ -19,7 +48,7 @@ This step-by-step engineering roadmap guides an AI or human developer to build t
 ```
 com.example.
 ├── data/
-│   ├── local/             # Room Database, DAOs, Entities
+│   ├── local/             # Room Database, DAOs, Entities, StatePersister
 │   ├── model/             # SrtLine, ProjectMetadata, AlternativeTranslation, TapSession
 │   ├── parser/            # SrtParser, SrtSerializer
 │   └── repository/        # SubtitleRepository, WorkspaceManager
@@ -33,7 +62,7 @@ com.example.
 │   └── theme/             # Material 3 ColorScheme, Type, Shapes (RTL Support)
 └── util/
     ├── TimeUtils.kt       # Srt time formatting, parsing (HH:mm:ss,SSS)
-    └── Extensions.kt      # Context, SAF Uri extensions
+    └── Extensions.kt      # Context, SAF Uri extensions, HapticUtils
 ```
 
 ---
@@ -62,9 +91,10 @@ com.example.
 
 ### 2.2 Room Persistence
 - **Entities**:
-  - `TapSessionEntity`: Stores in-progress tap sessions (`id`, `title`, `mediaUri`, `rawText`, `linesJson`, `lastModified`).
+  - `TapSessionEntity`: Stores in-progress tap sessions (`id`, `title`, `mediaUri`, `rawText`, `linesJson`, `currentPositionMs`, `activeLineIndex`, `lastModified`).
   - `ProjectReviewCacheEntity`: Caches selected translation choices per project subfolder (`projectFolderUri`, `lineIndex`, `selectedSource`, `editedText`, `isReviewed`).
-- **DAOs**: `TapSessionDao`, `ProjectReviewDao`.
+  - `AppStateEntity`: Stores last active route, selected folder URI, and playback states.
+- **DAOs**: `TapSessionDao`, `ProjectReviewDao`, `AppStateDao`.
 
 ### 2.3 Subtitle Parser & Serializer (`SrtParser.kt`)
 - **Robust Multi-line Regex Parser**:
@@ -110,19 +140,20 @@ com.example.
 ### 4.1 Step 1: Input & Setup
 - **Media Picker**: Open system file picker via `ActivityResultContracts.OpenDocument()`. Request persistable URI permissions.
 - **Transcript Input View**:
-  - TextField to paste raw script or load plain `.txt` / `.srt`.
+  - High-comfort TextField to paste raw script or load plain `.txt` / `.srt`.
   - **Auto-Split Tools**: Split text into subtitle cues by line breaks, sentence delimiters (`.`, `!`, `?`), or custom character limits (e.g., max 40 chars).
-  - List of past saved drafts with one-tap restore.
+  - List of past saved drafts with one-tap restore and auto-save on typing.
 
 ### 4.2 Step 2: Live Tapping Engine
 - **Tapping Modes**:
   - *Sequential Mode*: Press tap button -> sets `startTimeMs` for active line -> press again -> sets `endTimeMs` and instantly advances to next line.
   - *Continuous Hold Mode*: Keydown/Press sets `startTime`, Keyup/Release sets `endTime` and advances.
 - **UI & UX Controls**:
-  - Large tactile on-screen tap button with pulsing animations and haptic feedback (`LocalHapticFeedback`).
+  - Large tactile on-screen tap button with pulsing animations and instant haptic feedback (`LocalHapticFeedback`).
   - Speed toggle dropdown and quick-select chips (`0.5x` to `2.0x`).
   - Real-time auto-scrolling line list keeping the currently active line centered.
   - Action buttons: "Pause / Resume", "Undo Last Tap", "Reset Tapping".
+  - Auto-persists every tap event to Room in real-time.
 
 ### 4.3 Step 3: Fine-Tuning & Line Adjuster
 - **Interactive Line Card**:
@@ -142,6 +173,7 @@ com.example.
 - User selects root folder with SAF Tree Picker (`OpenDocumentTree`).
 - App discovers all subfolders containing projects.
 - Subfolder Card lists: Project name, detected media filename, `main.srt` status, and list of detected translation files (e.g. `[fa_gemini.srt, fa_human.srt]`).
+- Auto-saves selected folder URI so it reloads immediately on next app launch.
 
 ### 5.2 Step 2: Multi-Translation Matrix Interface
 - **Layout**:
@@ -152,6 +184,7 @@ com.example.
   - **Reference Text**: Original native transcription from `main.srt`.
   - **Translation Option Cards**: Radio-selectable cards for each candidate source displaying source label, translation text, and word count.
   - **Custom Polish Editor**: TextField for manual refinement when none of the automatic candidates are 100% ideal.
+  - Auto-saves all selections and edits to Room cache on click/change.
 
 ### 5.3 Step 3: Batch Operations & Quality Checks
 - **Global Batch Selector**: "Select All from [fa_gemini.srt]" or "Select All from [fa_human.srt]".
@@ -165,7 +198,7 @@ com.example.
 
 ---
 
-## Phase 6: Edge Cases & Polish
+## Phase 6: Edge Cases, Performance & UX Polish
 
 1. **SAF Permission Persistence**:
    - Always call `context.contentResolver.takePersistableUriPermission()` to maintain folder access across app restarts.
@@ -175,5 +208,6 @@ com.example.
    - Verify `PlaybackParams.speed` works seamlessly across all supported Android versions (API 23+) without pitch distortion.
 4. **Bi-directional (RTL/LTR) Text Formatting**:
    - Ensure proper text alignment and unicode directional markers (`\u200E`, `\u200F`) for Arabic/Persian subtitles.
-5. **Accessibility & Touch Targets**:
+5. **Touch Targets & Smooth Scrolling**:
    - Maintain minimum 48dp touch targets for all timing adjusters, tap triggers, and candidate selection cards.
+   - Use `rememberLazyListState()` and lightweight state keys to ensure silky-smooth 60/120fps scrolling.

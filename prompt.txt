@@ -2,8 +2,23 @@ Create a professional, modern Android application using Kotlin and Jetpack Compo
 
 ---
 
+### Critical Core Principles: Bulletproof State Persistence & Elite UX
+
+1. **Bulletproof State Persistence & Zero Data Loss**:
+   - **Continuous Real-Time Auto-Save**: Every single tap, timestamp adjustment, line text edit, or translation choice must be immediately persisted to the local Room database and/or file system asynchronously.
+   - **Crash & Process Death Resilience**: If the app is suddenly killed by Android OS, backgrounded, rotated, or closed, resuming the app must instantly restore the exact state: current media position, in-progress tap line index, active project, and all uncommitted or committed changes without losing a single millisecond of progress.
+   - **Session Recovery & Drafts**: Users can switch between projects or tap sessions effortlessly with automatic draft recovery and timestamped change history.
+
+2. **Elite User Experience (UX) & Ergonomics**:
+   - **Tactile & Responsive Feedback**: High-contrast active states, visual pulse effects during live tapping, and crisp haptic feedback (`HapticFeedbackType.LongPress` / `TextHandleMove`) on every action.
+   - **Frictionless Interaction & Accessibility**: Strict compliance with >= 48dp touch targets, clear high-contrast typography, bi-directional text support (full Persian/Arabic RTL & LTR), and zero lag/jank with optimized `LazyColumn` keying and `remember` caching.
+   - **Adaptive Layouts**: Seamless responsiveness across phone portrait, phone landscape, foldables, and large tablet split-pane layouts.
+   - **Safety Nets**: Dedicated multi-level Undo/Redo actions for tapping and editing, plus confirmation safety dialogs for destructive actions.
+
+---
+
 ### Core Architectural & UI Foundations
-- **Framework**: Jetpack Compose, Material Design 3 (M3) with dynamic color theming, edge-to-edge layout support, fluid responsive UI (tablets/phones).
+- **Framework**: Jetpack Compose, Material Design 3 (M3) with dynamic color theming, edge-to-edge layout support, fluid responsive UI.
 - **Architecture**: Clean MVVM architecture (ViewModels, StateFlow, Room Database, Kotlin Coroutines).
 - **Storage**: Storage Access Framework (SAF / `DocumentFile`) for folder-based project loading and direct file I/O, plus Room for caching drafts and sessions.
 - **Media Engine**: Native Android `MediaPlayer` with `SurfaceView` integration for synchronized video/audio playback, precise millisecond seeking, and real-time tracking.
@@ -16,25 +31,25 @@ A precision tool designed to synchronize plain text/transcriptions to audio or v
 
 #### 1. Input & Session Setup
 - **Media Loader**: Supports picking audio or video files (MP4, MKV, MP3, WAV, AAC, etc.) via SAF. Includes a toggleable video player preview (SurfaceView) or audio waveform placeholder.
-- **Text Import**:
+- **Text Import & Pre-Processing**:
   - Paste raw script, transcript, or lyrics into a clean text editor.
-  - Auto-split into subtitle lines by newlines, sentences, or character length thresholds.
+  - Auto-split into subtitle lines by newlines, sentences (`.`, `!`, `?`), or character length thresholds.
   - Option to load existing unfinished tap sessions from local Room database or import existing SRT files for re-timing.
 - **Playback Speed Selector**:
-  - Toggle playback speed directly on the player: `0.5x`, `0.75x`, `1.0x`, `1.25x`, `1.5x`, `1.75x`, `2.0x`.
+  - Quick-select speed buttons directly on the player: `0.5x`, `0.75x`, `1.0x`, `1.25x`, `1.5x`, `1.75x`, `2.0x`.
   - Drift-compensated time tracking that matches actual media speed during live tapping.
 
 #### 2. Live Synchronization (Tap Engine)
 - **Interactive Tapping Modes**:
   - **Press-and-Hold / Sequential Tap**: Press to mark the start time of the current line; release or press again to mark the end time and automatically advance to the next line.
-  - **Large On-Screen Tap Target & Keyboard / Spacebar Support**: High-contrast, tactile tapping button with visual active pulse and haptic feedback.
-- **Live Visual Feed**:
-  - Highlights currently active line, previous completed lines, and upcoming lines in a smooth auto-scrolling list.
+  - **Large Tactile Tap Target & Keyboard / Spacebar Support**: High-contrast, prominent tapping trigger with visual active pulse and haptic feedback.
+- **Live Visual Feed & Auto-Scroll**:
+  - Highlights currently active line, previous completed lines, and upcoming lines in a smooth auto-scrolling list that keeps the user focused on the current cue.
   - Real-time timestamp display (`HH:MM:SS,mmm`).
-  - Pause, resume, undo last tap, and restart tapping without losing progress.
+  - Pause, resume, undo last tap, and restart tapping without losing previously saved progress.
 
 #### 3. Post-Sync Fine-Tuning & Editor
-- **Line-by-Line Preview**:
+- **Line-by-Line Audition**:
   - Clicking any subtitle line automatically seeks the media player to that line's `startTimeMs` and plays until `endTimeMs` for immediate audio-visual verification.
 - **Nudge Timing Controls**:
   - Quick millisecond nudge buttons for start and end times: `±50ms`, `±100ms`, `±500ms`.
