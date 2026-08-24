@@ -186,7 +186,7 @@ fun ReviewerScreen(
                         ) {
                             Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Refresh")
+                            // Text("Refresh")
                         }
                         OutlinedButton(
                             onClick = { directoryPicker.launch(null) },
@@ -194,7 +194,7 @@ fun ReviewerScreen(
                         ) {
                             Icon(Icons.Filled.Folder, contentDescription = "Change")
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Change")
+                            // Text("Change")
                         }
                         Button(
                             onClick = { viewModel.clearActiveMainFolder() },
@@ -203,7 +203,7 @@ fun ReviewerScreen(
                         ) {
                             Icon(Icons.Filled.Close, contentDescription = "Close")
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Close")
+                            // Text("Close")
                         }
                     }
 

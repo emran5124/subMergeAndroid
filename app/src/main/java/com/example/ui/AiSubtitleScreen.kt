@@ -202,7 +202,7 @@ fun AiSubtitleScreen(
             ) {
                 Icon(Icons.Filled.Mic, contentDescription = "AI Option")
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Option 1: AI Gemini")
+                Text("AI Gemini")
             }
 
             Button(
@@ -216,7 +216,7 @@ fun AiSubtitleScreen(
             ) {
                 Icon(Icons.Filled.Segment, contentDescription = "Manual Option")
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Option 2: Tap-to-Sync")
+                Text("Tap-to-Sync")
             }
         }
 
