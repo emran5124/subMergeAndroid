@@ -14,14 +14,14 @@ android {
     applicationId = "com.aistudio.subtitlestudio"
     minSdk = 24
     targetSdk = 36
-    versionCode = 76
-    versionName = "1.0.75"
+    versionCode = 200
+    versionName = "2.0.0"
 
     // Dynamic version override to ensure every single local or GitHub build increments automatically
     val dynamicVersionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull() 
-        ?: (System.currentTimeMillis() / 100000).toInt()
+        ?: 200
     val dynamicVersionName = System.getenv("APP_VERSION_NAME") 
-        ?: "1.0.$dynamicVersionCode"
+        ?: "2.0.0"
 
     versionCode = dynamicVersionCode
     versionName = dynamicVersionName
