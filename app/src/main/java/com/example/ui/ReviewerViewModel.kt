@@ -70,6 +70,13 @@ class ReviewerViewModel(application: Application) : AndroidViewModel(application
     private val _videoHeightDp = MutableStateFlow(200f)
     val videoHeightDp: StateFlow<Float> = _videoHeightDp.asStateFlow()
 
+    private val _selectedPlayerPage = MutableStateFlow(0)
+    val selectedPlayerPage: StateFlow<Int> = _selectedPlayerPage.asStateFlow()
+
+    fun setSelectedPlayerPage(page: Int) {
+        _selectedPlayerPage.value = page
+    }
+
     private val _precisePlaybackStop = MutableStateFlow(true)
     val precisePlaybackStop: StateFlow<Boolean> = _precisePlaybackStop.asStateFlow()
 

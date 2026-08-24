@@ -87,13 +87,7 @@ fun ActiveMediaPlayerComponent(
 
                     // Subtitle Overlay
                     val lines by viewModel.srtLines.collectAsState()
-                    val activeIdx by viewModel.activeLineIndex.collectAsState()
-                    val currentLine = if (playerIsPlaying) {
-                        lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
-                    } else {
-                        lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
-                            ?: lines.getOrNull(activeIdx)
-                    }
+                    val currentLine = lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
 
                     if (currentLine != null) {
                         val subtitleText = currentLine.selectedTranslationText ?: currentLine.nativeText
@@ -918,13 +912,7 @@ fun ReviewerActiveMediaPlayerComponent(
     val readerFontWeight by viewModel.readerFontWeight.collectAsState()
 
     val lines by viewModel.srtLines.collectAsState()
-    val activeIdx by viewModel.activeLineIndex.collectAsState()
-    val currentLine = if (playerIsPlaying) {
-        lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
-    } else {
-        lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
-            ?: lines.getOrNull(activeIdx)
-    }
+    val currentLine = lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
     val subtitleText = currentLine?.let { it.selectedTranslationText ?: it.nativeText } ?: ""
 
     Card(
@@ -933,7 +921,20 @@ fun ReviewerActiveMediaPlayerComponent(
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (isVideo) {
-                val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
+                val selectedPage by viewModel.selectedPlayerPage.collectAsState()
+                val pagerState = rememberPagerState(initialPage = selectedPage, pageCount = { 2 })
+
+                LaunchedEffect(selectedPage) {
+                    if (pagerState.currentPage != selectedPage) {
+                        pagerState.scrollToPage(selectedPage)
+                    }
+                }
+
+                LaunchedEffect(pagerState.currentPage) {
+                    if (pagerState.currentPage != selectedPage) {
+                        viewModel.setSelectedPlayerPage(pagerState.currentPage)
+                    }
+                }
 
                 // Top Header Switcher: Video vs Subtitle Reader Page
                 Row(
