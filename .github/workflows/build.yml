@@ -74,15 +74,21 @@ jobs:
         git commit -m "chore: bump version to v${{ steps.version_bump.outputs.version_name }} [skip ci]" || echo "No changes to commit"
         git push origin main || echo "Branch protection or restricted GITHUB_TOKEN permission blocked pushing version changes to branch, continuing with dynamic compilation version instead!"
 
-    - name: Re-generate pristine Gradle Wrapper
-      run: gradle wrapper
-      
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
     - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+      run: chmod +x gradlew || true
 
     - name: Restore Keystore
       run: |
-        echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "${{ github.workspace }}/app/my-upload-key.jks"
+        mkdir -p "${{ github.workspace }}/app"
+        if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "${{ github.workspace }}/app/my-upload-key.jks"
+          echo "Restored custom upload keystore"
+        else
+          echo "No custom KEYSTORE_BASE64 secret provided, fallback to debug signing"
+        fi
 
     - name: Build with Gradle
       env:
@@ -91,7 +97,7 @@ jobs:
         KEYSTORE_PATH: ${{ github.workspace }}/app/my-upload-key.jks
         APP_VERSION_CODE: ${{ steps.version_bump.outputs.version_code }}
         APP_VERSION_NAME: ${{ steps.version_bump.outputs.version_name }}
-      run: ./gradlew assembleRelease
+      run: ./gradlew assembleRelease --no-daemon
 
     - name: Rename APK for release
       run: |
