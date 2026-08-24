@@ -1,5 +1,9 @@
 package com.example.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.example.utils.FontUtils
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -222,13 +226,39 @@ fun SettingsScreen(
             var expandedFontMenu by remember { mutableStateOf(false) }
             var expandedWeightMenu by remember { mutableStateOf(false) }
 
-            val fontOptions = listOf(
-                "Default" to "پیش‌فرض سیستمی (Default)",
-                "SansSerif" to "سنس‌سریف مدرن (Sans-Serif)",
-                "Serif" to "سریف کلاسیک (Serif)",
-                "Monospace" to "مونو‌اسپیس (Monospace)",
-                "Cursive" to "دست‌نویس / فانتزی (Cursive)"
-            )
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val customFonts = remember { mutableStateListOf<FontUtils.CustomFontInfo>() }
+
+            LaunchedEffect(Unit) {
+                customFonts.clear()
+                customFonts.addAll(FontUtils.listCustomFonts(context))
+            }
+
+            val fontPickerLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.OpenDocument()
+            ) { uri: Uri? ->
+                if (uri != null) {
+                    val result = FontUtils.importFontFromUri(context, uri)
+                    if (result.isSuccess) {
+                        val newFont = result.getOrThrow()
+                        customFonts.clear()
+                        customFonts.addAll(FontUtils.listCustomFonts(context))
+                        viewModel.setReaderFontFamily("custom:${newFont.fileName}")
+                    }
+                }
+            }
+
+            val fontOptions = remember(customFonts) {
+                val base = listOf(
+                    "Default" to "پیش‌فرض سیستمی (Default)",
+                    "SansSerif" to "سنس‌سریف مدرن (Sans-Serif)",
+                    "Serif" to "سریف کلاسیک (Serif)",
+                    "Monospace" to "مونو‌اسپیس (Monospace)",
+                    "Cursive" to "دست‌نویس / فانتزی (Cursive)"
+                )
+                val custom = customFonts.map { "custom:${it.fileName}" to "فونت وارد شده: ${it.name}" }
+                base + custom
+            }
 
             val weightOptions = listOf(
                 "Normal" to "عادی (Normal - 400)",
@@ -488,7 +518,7 @@ fun SettingsScreen(
                                         text = {
                                             Text(
                                                 text = label,
-                                                fontFamily = resolveFontFamily(key)
+                                                fontFamily = resolveFontFamily(key, context)
                                             )
                                         },
                                         onClick = {
@@ -496,6 +526,64 @@ fun SettingsScreen(
                                             expandedFontMenu = false
                                         }
                                     )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Button(
+                            onClick = { fontPickerLauncher.launch(arrayOf("font/ttf", "font/otf", "application/x-font-ttf", "application/x-font-otf", "application/octet-stream")) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = "Add Font")
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("افزودن فایل فونت جدید (TTF / OTF)", style = MaterialTheme.typography.labelLarge)
+                        }
+
+                        if (customFonts.isNotEmpty()) {
+                            Text(
+                                text = "فونت‌های وارد شده:",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                            customFonts.forEach { fontInfo ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = fontInfo.name,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontFamily = resolveFontFamily("custom:${fontInfo.fileName}", context),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                if (readerFontFamily == "custom:${fontInfo.fileName}") {
+                                                    viewModel.setReaderFontFamily("Default")
+                                                }
+                                                FontUtils.deleteCustomFont(context, fontInfo.fileName)
+                                                customFonts.clear()
+                                                customFonts.addAll(FontUtils.listCustomFonts(context))
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = "Delete Font",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

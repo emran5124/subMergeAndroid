@@ -88,8 +88,12 @@ fun ActiveMediaPlayerComponent(
                     // Subtitle Overlay
                     val lines by viewModel.srtLines.collectAsState()
                     val activeIdx by viewModel.activeLineIndex.collectAsState()
-                    val currentLine = lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs } 
-                        ?: lines.getOrNull(activeIdx)
+                    val currentLine = if (playerIsPlaying) {
+                        lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
+                    } else {
+                        lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
+                            ?: lines.getOrNull(activeIdx)
+                    }
 
                     if (currentLine != null) {
                         val subtitleText = currentLine.selectedTranslationText ?: currentLine.nativeText
@@ -740,14 +744,8 @@ fun LayoutSizeControls(
     }
 }
 
-fun resolveFontFamily(familyStr: String): FontFamily {
-    return when (familyStr.lowercase().trim()) {
-        "sans-serif", "sansserif" -> FontFamily.SansSerif
-        "serif" -> FontFamily.Serif
-        "monospace" -> FontFamily.Monospace
-        "cursive" -> FontFamily.Cursive
-        else -> FontFamily.Default
-    }
+fun resolveFontFamily(familyStr: String, context: android.content.Context? = null): FontFamily {
+    return com.example.utils.FontUtils.resolveFontFamily(familyStr, context)
 }
 
 fun resolveFontWeight(weightStr: String): FontWeight {
@@ -858,9 +856,10 @@ fun ReviewerSubtitleReaderCard(
     fontWeightName: String = "Bold",
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val bgColor = parseColorSafe(bgColorHex, Color(0xFFE8D8C8))
     val textColor = parseColorSafe(textColorHex, Color(0xFF2D3A3A))
-    val fontFamily = resolveFontFamily(fontFamilyName)
+    val fontFamily = resolveFontFamily(fontFamilyName, context)
     val fontWeight = resolveFontWeight(fontWeightName)
 
     Card(
@@ -920,8 +919,12 @@ fun ReviewerActiveMediaPlayerComponent(
 
     val lines by viewModel.srtLines.collectAsState()
     val activeIdx by viewModel.activeLineIndex.collectAsState()
-    val currentLine = lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
-        ?: lines.getOrNull(activeIdx)
+    val currentLine = if (playerIsPlaying) {
+        lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
+    } else {
+        lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
+            ?: lines.getOrNull(activeIdx)
+    }
     val subtitleText = currentLine?.let { it.selectedTranslationText ?: it.nativeText } ?: ""
 
     Card(
