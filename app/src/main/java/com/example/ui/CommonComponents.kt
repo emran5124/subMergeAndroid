@@ -878,7 +878,7 @@ fun ReviewerSubtitleReaderCard(
                 )
             } else {
                 Text(
-                    text = "—",
+                    text = "",
                     color = textColor.copy(alpha = 0.35f),
                     style = MaterialTheme.typography.headlineSmall,
                     fontFamily = fontFamily,
