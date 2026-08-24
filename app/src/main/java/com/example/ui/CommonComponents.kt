@@ -4,12 +4,16 @@ import android.media.MediaPlayer
 import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -23,13 +27,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -730,6 +740,163 @@ fun LayoutSizeControls(
     }
 }
 
+fun resolveFontFamily(familyStr: String): FontFamily {
+    return when (familyStr.lowercase().trim()) {
+        "sans-serif", "sansserif" -> FontFamily.SansSerif
+        "serif" -> FontFamily.Serif
+        "monospace" -> FontFamily.Monospace
+        "cursive" -> FontFamily.Cursive
+        else -> FontFamily.Default
+    }
+}
+
+fun resolveFontWeight(weightStr: String): FontWeight {
+    return when (weightStr.lowercase().trim()) {
+        "normal" -> FontWeight.Normal
+        "medium" -> FontWeight.Medium
+        "semibold", "semi-bold" -> FontWeight.SemiBold
+        "bold" -> FontWeight.Bold
+        "extrabold", "extra-bold" -> FontWeight.ExtraBold
+        else -> FontWeight.Bold
+    }
+}
+
+fun parseColorSafe(hexStr: String, fallback: Color): Color {
+    return try {
+        val clean = hexStr.trim().removePrefix("#")
+        when (clean.length) {
+            6 -> Color((0xFF000000 or clean.toLong(16)).toInt())
+            8 -> Color(clean.toLong(16).toInt())
+            3 -> {
+                val r = clean[0].toString().repeat(2)
+                val g = clean[1].toString().repeat(2)
+                val b = clean[2].toString().repeat(2)
+                Color((0xFF000000 or "$r$g$b".toLong(16)).toInt())
+            }
+            else -> fallback
+        }
+    } catch (e: Exception) {
+        fallback
+    }
+}
+
+@Composable
+fun AutoResizeSubtitleText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color(0xFF2D3A3A),
+    fontFamily: FontFamily = FontFamily.Default,
+    fontWeight: FontWeight = FontWeight.Bold,
+    textAlign: TextAlign = TextAlign.Center,
+    maxFontSize: TextUnit = 48.sp,
+    minFontSize: TextUnit = 12.sp,
+) {
+    BoxWithConstraints(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        val density = LocalDensity.current
+        val textMeasurer = rememberTextMeasurer()
+
+        val maxPxWidth = with(density) { (maxWidth - 24.dp).toPx().coerceAtLeast(10f) }
+        val maxPxHeight = with(density) { (maxHeight - 24.dp).toPx().coerceAtLeast(10f) }
+
+        val targetFontSize = remember(text, maxWidth, maxHeight, fontFamily, fontWeight) {
+            if (text.isBlank()) return@remember 24.sp
+
+            var low = minFontSize.value
+            var high = maxFontSize.value
+            var best = low
+
+            repeat(10) {
+                val mid = (low + high) / 2f
+                val style = TextStyle(
+                    fontSize = mid.sp,
+                    fontFamily = fontFamily,
+                    fontWeight = fontWeight,
+                    textAlign = textAlign,
+                    lineHeight = (mid * 1.32f).sp
+                )
+                val result = textMeasurer.measure(
+                    text = AnnotatedString(text),
+                    style = style,
+                    constraints = Constraints(maxWidth = maxPxWidth.toInt())
+                )
+
+                if (result.size.height <= maxPxHeight && result.size.width <= maxPxWidth && !result.hasVisualOverflow) {
+                    best = mid
+                    low = mid + 0.5f
+                } else {
+                    high = mid - 0.5f
+                }
+            }
+            best.sp
+        }
+
+        Text(
+            text = text,
+            color = color,
+            style = TextStyle(
+                fontSize = targetFontSize,
+                fontFamily = fontFamily,
+                fontWeight = fontWeight,
+                textAlign = textAlign,
+                lineHeight = targetFontSize * 1.32f
+            ),
+            textAlign = textAlign,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
+@Composable
+fun ReviewerSubtitleReaderCard(
+    subtitleText: String,
+    textColorHex: String = "#2D3A3A",
+    bgColorHex: String = "#E8D8C8",
+    fontFamilyName: String = "Default",
+    fontWeightName: String = "Bold",
+    modifier: Modifier = Modifier
+) {
+    val bgColor = parseColorSafe(bgColorHex, Color(0xFFE8D8C8))
+    val textColor = parseColorSafe(textColorHex, Color(0xFF2D3A3A))
+    val fontFamily = resolveFontFamily(fontFamilyName)
+    val fontWeight = resolveFontWeight(fontWeightName)
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = bgColor)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (subtitleText.isNotBlank()) {
+                AutoResizeSubtitleText(
+                    text = subtitleText,
+                    color = textColor,
+                    fontFamily = fontFamily,
+                    fontWeight = fontWeight,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    text = "—",
+                    color = textColor.copy(alpha = 0.35f),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontFamily = fontFamily,
+                    fontWeight = fontWeight,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun ReviewerActiveMediaPlayerComponent(
     viewModel: ReviewerViewModel,
@@ -742,65 +909,176 @@ fun ReviewerActiveMediaPlayerComponent(
     onPlaySegment: () -> Unit,
     onToggleAutoPlay: (Boolean) -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    val isVideo = isVideoFile(mediaName, null)
+    val videoHeightDp by viewModel.videoHeightDp.collectAsState()
+
+    val readerTextColor by viewModel.readerTextColor.collectAsState()
+    val readerBgColor by viewModel.readerBgColor.collectAsState()
+    val readerFontFamily by viewModel.readerFontFamily.collectAsState()
+    val readerFontWeight by viewModel.readerFontWeight.collectAsState()
+
+    val lines by viewModel.srtLines.collectAsState()
+    val activeIdx by viewModel.activeLineIndex.collectAsState()
+    val currentLine = lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs }
+        ?: lines.getOrNull(activeIdx)
+    val subtitleText = currentLine?.let { it.selectedTranslationText ?: it.nativeText } ?: ""
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp))
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            val showVideoPlayer = true
-            val videoHeightDp = 200f
-            val isVideo = isVideoFile(mediaName, null)
+            if (isVideo) {
+                val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
 
-            if (showVideoPlayer && isVideo) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(videoHeightDp.dp)
-                        .background(Color.Black)
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center
+                // Top Header Switcher: Video vs Subtitle Reader Page
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ZoomableVideoBox(
-                        modifier = Modifier.fillMaxSize()
+                    // Segmented Switch Pills
+                    Row(
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        VideoSurfaceView(
-                            mediaPlayer = viewModel.mediaPlayer,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-
-                    // Subtitle Overlay
-                    val lines by viewModel.srtLines.collectAsState()
-                    val activeIdx by viewModel.activeLineIndex.collectAsState()
-                    val currentLine = lines.find { playerPosMs >= it.startTimeMs && playerPosMs <= it.endTimeMs } 
-                        ?: lines.getOrNull(activeIdx)
-
-                    if (currentLine != null) {
-                        val subtitleText = currentLine.selectedTranslationText ?: currentLine.nativeText
-                        if (subtitleText.isNotBlank()) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
-                                    .background(Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                        // Tab 0: Video
+                        Surface(
+                            onClick = {
+                                coroutineScope.launch { pagerState.animateScrollToPage(0) }
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            contentColor = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Text(
-                                    text = subtitleText,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center
-                                )
+                                Icon(Icons.Filled.Videocam, contentDescription = "ویدیو", modifier = Modifier.size(16.dp))
+                                Text("ویدیو", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Tab 1: Reader
+                        Surface(
+                            onClick = {
+                                coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            contentColor = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Filled.Subtitles, contentDescription = "نمایشگر متن", modifier = Modifier.size(16.dp))
+                                Text("نمایشگر متن", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
+
+                    // Quick Toggle Flip Button
+                    IconButton(
+                        onClick = {
+                            val target = if (pagerState.currentPage == 0) 1 else 0
+                            coroutineScope.launch { pagerState.animateScrollToPage(target) }
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (pagerState.currentPage == 0) Icons.Filled.SwapHoriz else Icons.Filled.Videocam,
+                            contentDescription = "تغییر حالت نمایش",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+
+                // Swipeable / Slidable Horizontal Pager
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(videoHeightDp.dp)
+                ) { page ->
+                    if (page == 0) {
+                        // Page 0: Clean Video View (WITHOUT subtitle overlay text on top of the video)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black)
+                                .clip(RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ZoomableVideoBox(
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                VideoSurfaceView(
+                                    mediaPlayer = viewModel.mediaPlayer,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+                    } else {
+                        // Page 1: Dedicated Subtitle Reader Screen (with custom text & bg color, auto-size centered)
+                        ReviewerSubtitleReaderCard(
+                            subtitleText = subtitleText,
+                            textColorHex = readerTextColor,
+                            bgColorHex = readerBgColor,
+                            fontFamilyName = readerFontFamily,
+                            fontWeightName = readerFontWeight,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                // Page Indicator Dots
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(2) { index ->
+                        val isSelected = (pagerState.currentPage == index)
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 3.dp)
+                                .size(if (isSelected) 18.dp else 7.dp, 6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                .clickable {
+                                    coroutineScope.launch { pagerState.animateScrollToPage(index) }
+                                }
+                        )
+                    }
+                }
+            } else {
+                // Audio Only Media (No Video Stream): Default directly to Subtitle Reader Card!
+                ReviewerSubtitleReaderCard(
+                    subtitleText = subtitleText,
+                    textColorHex = readerTextColor,
+                    bgColorHex = readerBgColor,
+                    fontFamilyName = readerFontFamily,
+                    fontWeightName = readerFontWeight,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(videoHeightDp.dp)
+                )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.Audiotrack, contentDescription = "Audio Track", tint = MaterialTheme.colorScheme.primary)
+                Icon(
+                    imageVector = if (isVideo) Icons.Filled.Videocam else Icons.Filled.Audiotrack,
+                    contentDescription = if (isVideo) "Video Track" else "Audio Track",
+                    tint = MaterialTheme.colorScheme.primary
+                )
                 Text(
                      text = mediaName,
                      style = MaterialTheme.typography.bodyMedium,
@@ -864,6 +1142,7 @@ fun ReviewerLayoutSizeControls(
     viewModel: ReviewerViewModel,
     modifier: Modifier = Modifier
 ) {
+    val videoHeightDp by viewModel.videoHeightDp.collectAsState()
     val timelinesWeightFraction by viewModel.timelinesWeightFraction.collectAsState()
     var isExpanded by remember { mutableStateOf(false) }
 
@@ -892,7 +1171,7 @@ fun ReviewerLayoutSizeControls(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "ابعاد صفحه / Layout Sizing",
+                        text = "ابعاد صفحه و سایز کادر پخش / Layout Sizing",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
@@ -905,6 +1184,43 @@ fun ReviewerLayoutSizeControls(
 
             if (isExpanded) {
                 Spacer(modifier = Modifier.height(12.dp))
+
+                // Video/Reader Box Height Control
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ارتفاع کادر تصویر یا متن: ${videoHeightDp.toInt()} dp",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            IconButton(
+                                onClick = { viewModel.setVideoHeightDp(videoHeightDp - 20f) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Filled.Remove, contentDescription = "Decrease Height", modifier = Modifier.size(14.dp))
+                            }
+                            IconButton(
+                                onClick = { viewModel.setVideoHeightDp(videoHeightDp + 20f) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = "Increase Height", modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                    Slider(
+                        value = videoHeightDp,
+                        onValueChange = { viewModel.setVideoHeightDp(it) },
+                        valueRange = 80f..400f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Timelines Height / Weight Control
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

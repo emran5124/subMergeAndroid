@@ -237,6 +237,23 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
     private val _precisePlaybackStop = MutableStateFlow(true)
     val precisePlaybackStop: StateFlow<Boolean> = _precisePlaybackStop.asStateFlow()
 
+    // Subtitle Reader Screen customization flows
+    val readerTextColor: StateFlow<String> = repository.getSettingFlow("reader_text_color")
+        .map { it ?: "#2D3A3A" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "#2D3A3A")
+
+    val readerBgColor: StateFlow<String> = repository.getSettingFlow("reader_bg_color")
+        .map { it ?: "#E8D8C8" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "#E8D8C8")
+
+    val readerFontFamily: StateFlow<String> = repository.getSettingFlow("reader_font_family")
+        .map { it ?: "Default" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Default")
+
+    val readerFontWeight: StateFlow<String> = repository.getSettingFlow("reader_font_weight")
+        .map { it ?: "Bold" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Bold")
+
     init {
         viewModelScope.launch {
             // Load show video player setting
@@ -2154,6 +2171,39 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         _precisePlaybackStop.value = enabled
         viewModelScope.launch {
             repository.saveSetting("precise_playback_stop", enabled.toString())
+        }
+    }
+
+    fun setReaderTextColor(color: String) {
+        viewModelScope.launch {
+            repository.saveSetting("reader_text_color", color)
+        }
+    }
+
+    fun setReaderBgColor(color: String) {
+        viewModelScope.launch {
+            repository.saveSetting("reader_bg_color", color)
+        }
+    }
+
+    fun setReaderFontFamily(family: String) {
+        viewModelScope.launch {
+            repository.saveSetting("reader_font_family", family)
+        }
+    }
+
+    fun setReaderFontWeight(weight: String) {
+        viewModelScope.launch {
+            repository.saveSetting("reader_font_weight", weight)
+        }
+    }
+
+    fun resetReaderStyleToDefault() {
+        viewModelScope.launch {
+            repository.saveSetting("reader_text_color", "#2D3A3A")
+            repository.saveSetting("reader_bg_color", "#E8D8C8")
+            repository.saveSetting("reader_font_family", "Default")
+            repository.saveSetting("reader_font_weight", "Bold")
         }
     }
 

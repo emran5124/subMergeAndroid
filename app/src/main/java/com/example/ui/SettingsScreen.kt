@@ -1,14 +1,22 @@
 package com.example.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -197,6 +205,345 @@ fun SettingsScreen(
                         onCheckedChange = { viewModel.setPrecisePlaybackStop(it) },
                         modifier = Modifier.testTag("precise_playback_stop_switch")
                     )
+                }
+            }
+        }
+
+        // --- Subtitle Reader Screen Customization ---
+        item {
+            val readerTextColor by viewModel.readerTextColor.collectAsState()
+            val readerBgColor by viewModel.readerBgColor.collectAsState()
+            val readerFontFamily by viewModel.readerFontFamily.collectAsState()
+            val readerFontWeight by viewModel.readerFontWeight.collectAsState()
+
+            var textColorInput by remember(readerTextColor) { mutableStateOf(readerTextColor) }
+            var bgColorInput by remember(readerBgColor) { mutableStateOf(readerBgColor) }
+
+            var expandedFontMenu by remember { mutableStateOf(false) }
+            var expandedWeightMenu by remember { mutableStateOf(false) }
+
+            val fontOptions = listOf(
+                "Default" to "پیش‌فرض سیستمی (Default)",
+                "SansSerif" to "سنس‌سریف مدرن (Sans-Serif)",
+                "Serif" to "سریف کلاسیک (Serif)",
+                "Monospace" to "مونو‌اسپیس (Monospace)",
+                "Cursive" to "دست‌نویس / فانتزی (Cursive)"
+            )
+
+            val weightOptions = listOf(
+                "Normal" to "عادی (Normal - 400)",
+                "Medium" to "متوسط (Medium - 500)",
+                "SemiBold" to "نیمه‌ضخیم (SemiBold - 600)",
+                "Bold" to "ضخیم (Bold - 700)",
+                "ExtraBold" to "بسیار ضخیم (ExtraBold - 800)"
+            )
+
+            val presetTextColors = listOf("#2D3A3A", "#000000", "#FFFFFF", "#1E293B", "#14532D", "#7C2D12", "#1E3A8A")
+            val presetBgColors = listOf("#E8D8C8", "#F5EBE0", "#FFFFFF", "#1E1E1E", "#FEF3C7", "#E0F2FE", "#D1FAE5")
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.FormatPaint,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "تنظیمات صفحه ریدر زیرنویس",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                viewModel.resetReaderStyleToDefault()
+                            }
+                        ) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Reset", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("بازنشانی پیش‌فرض", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+
+                    Text(
+                        text = "تنظیم رنگ متن، رنگ پس‌زمینه و فونت صفحه اختصاصی نمایش زیرنویس در Reviewer Studio",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // --- Live Preview Box ---
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "پیش‌نمایش زنده (Live Preview):",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                        ) {
+                            ReviewerSubtitleReaderCard(
+                                subtitleText = "نمونه نمایش متن زیرنویس در کادر ریدر\nSample Subtitle Text Preview",
+                                textColorHex = readerTextColor,
+                                bgColorHex = readerBgColor,
+                                fontFamilyName = readerFontFamily,
+                                fontWeightName = readerFontWeight,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+
+                    // --- Text Color Configuration ---
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "رنگ متن (Text Color):",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(parseColorSafe(readerTextColor, Color(0xFF2D3A3A)))
+                                    .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = textColorInput,
+                                onValueChange = {
+                                    textColorInput = it
+                                    if (it.startsWith("#") && (it.length == 7 || it.length == 9 || it.length == 4)) {
+                                        viewModel.setReaderTextColor(it)
+                                    }
+                                },
+                                label = { Text("کد رنگ هگز (مثلا #2D3A3A)") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Button(
+                                onClick = { viewModel.setReaderTextColor(textColorInput) }
+                            ) {
+                                Text("ثبت")
+                            }
+                        }
+
+                        // Presets
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("پالت آماده:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            presetTextColors.forEach { hex ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(parseColorSafe(hex, Color.Black))
+                                        .border(
+                                            width = if (readerTextColor.equals(hex, ignoreCase = true)) 2.5.dp else 1.dp,
+                                            color = if (readerTextColor.equals(hex, ignoreCase = true)) MaterialTheme.colorScheme.primary else Color.Gray,
+                                            shape = CircleShape
+                                        )
+                                        .clickable {
+                                            textColorInput = hex
+                                            viewModel.setReaderTextColor(hex)
+                                        }
+                                )
+                            }
+                        }
+                    }
+
+                    // --- Background Color Configuration ---
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "رنگ پس‌زمینه (Background Color):",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(parseColorSafe(readerBgColor, Color(0xFFE8D8C8)))
+                                    .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = bgColorInput,
+                                onValueChange = {
+                                    bgColorInput = it
+                                    if (it.startsWith("#") && (it.length == 7 || it.length == 9 || it.length == 4)) {
+                                        viewModel.setReaderBgColor(it)
+                                    }
+                                },
+                                label = { Text("کد رنگ هگز (مثلا #E8D8C8)") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Button(
+                                onClick = { viewModel.setReaderBgColor(bgColorInput) }
+                            ) {
+                                Text("ثبت")
+                            }
+                        }
+
+                        // Presets
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("پالت آماده:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            presetBgColors.forEach { hex ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(parseColorSafe(hex, Color.White))
+                                        .border(
+                                            width = if (readerBgColor.equals(hex, ignoreCase = true)) 2.5.dp else 1.dp,
+                                            color = if (readerBgColor.equals(hex, ignoreCase = true)) MaterialTheme.colorScheme.primary else Color.Gray,
+                                            shape = CircleShape
+                                        )
+                                        .clickable {
+                                            bgColorInput = hex
+                                            viewModel.setReaderBgColor(hex)
+                                        }
+                                )
+                            }
+                        }
+                    }
+
+                    // --- Font Family Selection ---
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "فونت متن (Font Family):",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        ExposedDropdownMenuBox(
+                            expanded = expandedFontMenu,
+                            onExpandedChange = { expandedFontMenu = it }
+                        ) {
+                            val currentFontLabel = fontOptions.find { it.first.equals(readerFontFamily, ignoreCase = true) }?.second
+                                ?: readerFontFamily
+                            OutlinedTextField(
+                                value = currentFontLabel,
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedFontMenu) },
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = expandedFontMenu,
+                                onDismissRequest = { expandedFontMenu = false }
+                            ) {
+                                fontOptions.forEach { (key, label) ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = label,
+                                                fontFamily = resolveFontFamily(key)
+                                            )
+                                        },
+                                        onClick = {
+                                            viewModel.setReaderFontFamily(key)
+                                            expandedFontMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // --- Font Weight Selection ---
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "ضخامت قلم (Font Weight):",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        ExposedDropdownMenuBox(
+                            expanded = expandedWeightMenu,
+                            onExpandedChange = { expandedWeightMenu = it }
+                        ) {
+                            val currentWeightLabel = weightOptions.find { it.first.equals(readerFontWeight, ignoreCase = true) }?.second
+                                ?: readerFontWeight
+                            OutlinedTextField(
+                                value = currentWeightLabel,
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedWeightMenu) },
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = expandedWeightMenu,
+                                onDismissRequest = { expandedWeightMenu = false }
+                            ) {
+                                weightOptions.forEach { (key, label) ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = label,
+                                                fontWeight = resolveFontWeight(key)
+                                            )
+                                        },
+                                        onClick = {
+                                            viewModel.setReaderFontWeight(key)
+                                            expandedWeightMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

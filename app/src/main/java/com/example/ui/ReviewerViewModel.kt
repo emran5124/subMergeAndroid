@@ -67,8 +67,28 @@ class ReviewerViewModel(application: Application) : AndroidViewModel(application
     private val _timelinesWeightFraction = MutableStateFlow(0.8f)
     val timelinesWeightFraction: StateFlow<Float> = _timelinesWeightFraction.asStateFlow()
 
+    private val _videoHeightDp = MutableStateFlow(200f)
+    val videoHeightDp: StateFlow<Float> = _videoHeightDp.asStateFlow()
+
     private val _precisePlaybackStop = MutableStateFlow(true)
     val precisePlaybackStop: StateFlow<Boolean> = _precisePlaybackStop.asStateFlow()
+
+    // Subtitle Reader Screen customization flows
+    val readerTextColor: StateFlow<String> = repository.getSettingFlow("reader_text_color")
+        .map { it ?: "#2D3A3A" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "#2D3A3A")
+
+    val readerBgColor: StateFlow<String> = repository.getSettingFlow("reader_bg_color")
+        .map { it ?: "#E8D8C8" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "#E8D8C8")
+
+    val readerFontFamily: StateFlow<String> = repository.getSettingFlow("reader_font_family")
+        .map { it ?: "Default" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Default")
+
+    val readerFontWeight: StateFlow<String> = repository.getSettingFlow("reader_font_weight")
+        .map { it ?: "Bold" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Bold")
 
     init {
         viewModelScope.launch {
@@ -93,6 +113,34 @@ class ReviewerViewModel(application: Application) : AndroidViewModel(application
 
     fun setTimelinesWeightFraction(fraction: Float) {
         _timelinesWeightFraction.value = fraction.coerceIn(0.2f, 1.8f)
+    }
+
+    fun setVideoHeightDp(height: Float) {
+        _videoHeightDp.value = height.coerceIn(80f, 400f)
+    }
+
+    fun setReaderTextColor(color: String) {
+        viewModelScope.launch {
+            repository.saveSetting("reader_text_color", color)
+        }
+    }
+
+    fun setReaderBgColor(color: String) {
+        viewModelScope.launch {
+            repository.saveSetting("reader_bg_color", color)
+        }
+    }
+
+    fun setReaderFontFamily(family: String) {
+        viewModelScope.launch {
+            repository.saveSetting("reader_font_family", family)
+        }
+    }
+
+    fun setReaderFontWeight(weight: String) {
+        viewModelScope.launch {
+            repository.saveSetting("reader_font_weight", weight)
+        }
     }
 
     fun setAutoPlay(enabled: Boolean) {
