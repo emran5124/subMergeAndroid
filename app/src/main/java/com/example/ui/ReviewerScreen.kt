@@ -17,7 +17,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -106,7 +105,7 @@ fun ReviewerScreen(
                             },
                             title = { Text("SRT File Exported!") },
                             text = { Text("Successfully built & saved:\n$fileSaved\ninside the current sub-project folder.") },
-                            icon = { Icon(Icons.Filled.CheckCircle, contentDescription = "Success", tint = Color(0xFF34D399)) }
+                            icon = { Icon(Icons.Filled.CheckCircle, contentDescription = "Success", tint = MaterialTheme.colorScheme.primary) }
                         )
                     }
                 }
@@ -125,41 +124,16 @@ fun ReviewerScreen(
             if (activePickerFolder == null) {
                 // Initial State: Prompt folder selection
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(
-                        Icons.Filled.FolderOpen,
-                        contentDescription = "Project folder",
-                        modifier = Modifier.size(80.dp),
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                    EmptyState(
+                        icon = Icons.Filled.FolderOpen,
+                        title = "No Project Directory Selected",
+                        description = "Select your main workspace folder. Inside this folder, you will have subdirectories (e.g. project1, project2) containing your media files, main.srt, and translation SRTs.",
+                        ctaLabel = "Select Main Workspace Folder",
+                        onCtaClick = { directoryPicker.launch(null) }
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "No Project Directory Selected",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Select your main workspace folder. Inside this folder, you will have subdirectories (e.g. project1, project2) containing your media files, main.srt, and translation SRTs.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Button(
-                        onClick = { directoryPicker.launch(null) },
-                        modifier = Modifier.height(48.dp).widthIn(min = 200.dp)
-                    ) {
-                        Icon(Icons.Filled.Folder, contentDescription = "Pick Folder")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Select Main Workspace Folder")
-                    }
                 }
             } else if (activeSubpId == null) {
                 // Secondary State: Workspace folder selected, choose project
@@ -184,26 +158,40 @@ fun ReviewerScreen(
                             onClick = { viewModel.refreshActiveMainFolder() },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                            Icon(Icons.Filled.Refresh, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            // Text("Refresh")
+                            Text("Refresh")
                         }
                         OutlinedButton(
                             onClick = { directoryPicker.launch(null) },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Filled.Folder, contentDescription = "Change")
+                            Icon(Icons.Filled.Folder, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            // Text("Change")
+                            Text("Change")
                         }
+                        var showCloseConfirm by remember { mutableStateOf(false) }
                         Button(
-                            onClick = { viewModel.clearActiveMainFolder() },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            onClick = { showCloseConfirm = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            ),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Filled.Close, contentDescription = "Close")
+                            Icon(Icons.Filled.Close, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            // Text("Close")
+                            Text("Close")
+                        }
+                        if (showCloseConfirm) {
+                            ConfirmDialog(
+                                title = "Close workspace?",
+                                message = "This will close the current workspace folder and return to the start screen. Your files will not be deleted.",
+                                confirmLabel = "Close Workspace",
+                                destructive = true,
+                                onConfirm = { viewModel.clearActiveMainFolder() },
+                                onDismiss = { showCloseConfirm = false }
+                            )
                         }
                     }
 
@@ -212,10 +200,10 @@ fun ReviewerScreen(
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "No project sub-directories (e.g. folders containing main.srt) were found inside this workspace folder.",
-                                textAlign = TextAlign.Center,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            EmptyState(
+                                icon = Icons.Filled.FolderOff,
+                                title = "No Sub-Projects Found",
+                                description = "No project sub-directories (e.g. folders containing main.srt) were found inside this workspace folder."
                             )
                         }
                     } else {
@@ -390,8 +378,7 @@ fun ReviewerScreen(
                         ) {
                             FilledTonalIconButton(
                                 onClick = { viewModel.selectActiveLineIndex(activeLineIdx - 1) },
-                                enabled = activeLineIdx > 0,
-                                modifier = Modifier.size(36.dp)
+                                enabled = activeLineIdx > 0
                             ) {
                                 Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Line")
                             }
@@ -418,8 +405,7 @@ fun ReviewerScreen(
 
                             FilledTonalIconButton(
                                 onClick = { viewModel.selectActiveLineIndex(activeLineIdx + 1) },
-                                enabled = activeLineIdx < combinedLines.size - 1,
-                                modifier = Modifier.size(36.dp)
+                                enabled = activeLineIdx < combinedLines.size - 1
                             ) {
                                 Icon(Icons.Default.ChevronRight, contentDescription = "Next Line")
                             }

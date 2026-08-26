@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -19,14 +18,16 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.network.GeminiApiClient
+import com.example.ui.theme.Radii
+import com.example.ui.theme.Spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YoutubeExtractorScreen(
     viewModel: SubtitleStudioViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val urlInput by viewModel.youtubeUrlInput.collectAsState()
@@ -44,16 +45,17 @@ fun YoutubeExtractorScreen(
         "es" to "Spanish (Español)",
         "fr" to "French (Français)"
     )
+    val isBusy = extractionState is GeminiApiClient.CallStepState.Sending
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg)
     ) {
         Text(
             text = "YouTube Subtitle Extractor & AI Refiner",
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.primary
         )
 
@@ -65,40 +67,31 @@ fun YoutubeExtractorScreen(
 
         // API warnings if none configured
         if (configs.isEmpty()) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.Warning, contentDescription = "Warning", tint = MaterialTheme.colorScheme.error)
-                    Text(
-                        text = "You must register at least one Gemini API Key in the Settings tab first!",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
+            StatusBanner(
+                text = "You must register at least one Gemini API Key in the Settings tab first!",
+                type = BannerType.ERROR,
+                action = {
+                    TextButton(onClick = onNavigateToSettings) {
+                        Text("Go to Settings")
+                    }
                 }
-            }
+            )
         }
 
         // Language Selector Row
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
             Text(
                 text = "Target Language:",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.labelLarge
             )
             Box {
-                Button(
+                OutlinedButton(
                     onClick = { showLangMenu = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                    modifier = Modifier.heightIn(min = 40.dp)
                 ) {
                     Text(text = commonLanguages.firstOrNull { it.first == preferredLanguage }?.second ?: preferredLanguage)
                     Spacer(modifier = Modifier.width(4.dp))
@@ -124,11 +117,15 @@ fun YoutubeExtractorScreen(
         // URL input card
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            shape = Radii.lg,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.padding(Spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {
                 OutlinedTextField(
                     value = urlInput,
@@ -137,63 +134,96 @@ fun YoutubeExtractorScreen(
                     placeholder = { Text("https://www.youtube.com/watch?v=...") },
                     leadingIcon = { Icon(Icons.Filled.Link, contentDescription = "URL Link") },
                     modifier = Modifier.fillMaxWidth().testTag("youtube_url_input"),
-                    singleLine = true
+                    singleLine = true,
+                    shape = Radii.md
                 )
 
                 Button(
                     onClick = { viewModel.startYoutubeSrv3ToSrtFlow() },
-                    modifier = Modifier.fillMaxWidth().height(50.dp).testTag("extract_button"),
-                    enabled = urlInput.isNotBlank() && configs.isNotEmpty() && extractionState !is GeminiApiClient.CallStepState.Sending,
-                    shape = RoundedCornerShape(12.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 50.dp)
+                        .testTag("extract_button"),
+                    enabled = urlInput.isNotBlank() && configs.isNotEmpty() && !isBusy,
+                    shape = Radii.md
                 ) {
-                    Icon(Icons.Filled.CloudDownload, contentDescription = "Extract")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Extract & Build Subtitle")
+                    if (isBusy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = LocalContentColor.current
+                        )
+                        Spacer(modifier = Modifier.width(Spacing.sm))
+                        Text("Working...")
+                    } else {
+                        Icon(Icons.Filled.CloudDownload, contentDescription = "Extract")
+                        Spacer(modifier = Modifier.width(Spacing.sm))
+                        Text("Extract & Build Subtitle")
+                    }
                 }
             }
         }
 
         // Logs and execution reports
-        Text(
-            text = "Activity Log:",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Activity Log",
+                style = MaterialTheme.typography.titleMedium
+            )
+            if (logText.isNotBlank() && !isBusy) {
+                TextButton(onClick = { viewModel.clearYoutubeLog() }) {
+                    Icon(Icons.Filled.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Clear")
+                }
+            }
+        }
 
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(Radii.md)
                 .background(Color(0xFF1E293B))
-                .padding(12.dp)
+                .padding(Spacing.md)
         ) {
             val logScrollState = rememberLazyListState()
-            val logsList = logText.split("\n")
-            
-            // Auto scroll to last log item
-            LaunchedEffect(logsList.size) {
-                if (logsList.isNotEmpty()) {
+            val logsList = logText.split("\n").filter { it.isNotBlank() }
+
+            if (logsList.isEmpty()) {
+                Text(
+                    text = "No activity yet.\nExtract a subtitle to see progress here.",
+                    color = Color(0xFF94A3B8),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                // Auto scroll to last log item
+                LaunchedEffect(logsList.size) {
                     logScrollState.animateScrollToItem(logsList.size - 1)
                 }
-            }
 
-            LazyColumn(
-                state = logScrollState,
-                modifier = Modifier.fillMaxSize()
-            ) {
-                itemsIndexed(logsList) { _, logLine ->
-                    Text(
-                        text = logLine,
-                        color = when {
-                            logLine.startsWith("❌") -> Color(0xFFF87171)
-                            logLine.startsWith("✓") || logLine.startsWith("🎉") -> Color(0xFF34D399)
-                            logLine.startsWith("⚠️") || logLine.startsWith("🛑") -> Color(0xFFFBBF24)
-                            else -> Color(0xFFE2E8F0)
-                        },
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    )
+                LazyColumn(
+                    state = logScrollState,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    itemsIndexed(logsList) { _, logLine ->
+                        Text(
+                            text = logLine,
+                            color = when {
+                                logLine.startsWith("❌") -> Color(0xFFF87171)
+                                logLine.startsWith("✓") || logLine.startsWith("🎉") -> Color(0xFF34D399)
+                                logLine.startsWith("⚠️") || logLine.startsWith("🛑") -> Color(0xFFFBBF24)
+                                else -> Color(0xFFE2E8F0)
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                        )
+                    }
                 }
             }
         }
@@ -201,51 +231,22 @@ fun YoutubeExtractorScreen(
         // Active State popups / banners for Gemini Api steps
         when (val state = extractionState) {
             is GeminiApiClient.CallStepState.Sending -> {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        Text(
-                            text = "Querying Gemini API [${state.model}]...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
+                StatusBanner(
+                    text = "Querying Gemini API [${state.model}]...",
+                    type = BannerType.INFO
+                )
             }
             is GeminiApiClient.CallStepState.RetryingRateLimit -> {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            progress = { (30f - state.delaySecondsLeft) / 30f },
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Text(
-                            text = "Rate Limited (429). Retrying in ${state.delaySecondsLeft}s (Attempt ${state.attempt} of 4)...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
-                }
+                StatusBanner(
+                    text = "Rate Limited (429). Retrying in ${state.delaySecondsLeft}s (Attempt ${state.attempt} of 4)...",
+                    type = BannerType.WARNING
+                )
             }
             is GeminiApiClient.CallStepState.VpnBlockPrompt -> {
                 AlertDialog(
                     onDismissRequest = { /* No-op, forces action */ },
                     confirmButton = {
-                        TextButton(onClick = { state.onContinuePressed() }) {
+                        Button(onClick = { state.onContinuePressed() }) {
                             Text("Continue")
                         }
                     },

@@ -1262,6 +1262,10 @@ Please output ONLY the standard SRT content. Do NOT include any explanations, in
         _youtubeLog.value = _youtubeLog.value + message + "\n"
     }
 
+    fun clearYoutubeLog() {
+        _youtubeLog.value = ""
+    }
+
     private fun logStatus(msg: String) {
         Log.d(TAG, msg)
     }

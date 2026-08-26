@@ -70,11 +70,17 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { innerPadding ->
                     val bottomPaddingModifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
+                    val statusBarModifier = bottomPaddingModifier.statusBarsPadding()
                     when (selectedTab) {
-                        0 -> YoutubeExtractorScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
+                        0 -> YoutubeExtractorScreen(
+                            viewModel = viewModel,
+                            modifier = statusBarModifier,
+                            onNavigateToSettings = { selectedTab = 3 }
+                        )
+                        // Reviewer manages its own insets via its internal TopAppBar
                         1 -> ReviewerScreen(viewModel = reviewerViewModel, modifier = bottomPaddingModifier)
-                        2 -> AiSubtitleScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
-                        3 -> SettingsScreen(viewModel = viewModel, modifier = bottomPaddingModifier.statusBarsPadding())
+                        2 -> AiSubtitleScreen(viewModel = viewModel, modifier = statusBarModifier)
+                        3 -> SettingsScreen(viewModel = viewModel, modifier = statusBarModifier)
                     }
                 }
             }
